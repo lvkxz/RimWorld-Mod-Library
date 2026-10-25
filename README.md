@@ -276,6 +276,12 @@ Open <b>About</b>, click <b>Copy system info</b> and then <b>Report a bug</b>. P
 </details>
 
 <details>
+<summary><b>I have version 1.x installed. How do I update to 2.0?</b></summary>
+<br/>
+Uninstall version 1.x first (<i>Windows Settings → Apps → RimWorld Mod Library</i>), then run the 2.0 installer. Version 2.0 is built differently and installs to a new folder, so it doesn't replace 1.x on its own. Your settings, download history and mods are kept, because both versions use the same data folder.
+</details>
+
+<details>
 <summary><b>How do I uninstall the app?</b></summary>
 <br/>
 Use <i>Windows Settings → Apps</i>, or just delete the portable exe. Your mods stay in the RimWorld <code>Mods</code> folder. To remove the app's settings and SteamCMD as well, delete <code>%APPDATA%\RimWorld Mod Library</code>.

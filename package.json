@@ -1,7 +1,7 @@
 {
   "name": "rimworld-mod-library",
   "productName": "RimWorld Mod Library",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Mod library for RimWorld (Epic/GOG) with Steam Workshop integration via SteamCMD",
   "author": "lvkxz",
   "license": "UNLICENSED",
