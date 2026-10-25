@@ -7,11 +7,11 @@ const { installs } = require('./store');
 const MAX_ATTEMPTS = 3;
 
 class Installer {
-  constructor({ getModsDir, findInstalledPath, onUpdate, onBatchDone, onStatus }) {
+  constructor({ getModsDir, findInstalledPath, onUpdate, onBatchDone, onStatus, discoverDependencies }) {
     this.tasks = new Map();
     this.running = false;
     this.cancelled = false;
-    Object.assign(this, { getModsDir, findInstalledPath, onUpdate, onBatchDone, onStatus });
+    Object.assign(this, { getModsDir, findInstalledPath, onUpdate, onBatchDone, onStatus, discoverDependencies });
   }
 
   list() {
@@ -22,8 +22,13 @@ class Installer {
     this.onUpdate(this.list());
   }
 
-  // items: [{ id, title, preview, size, timeUpdated, isDependency, isUpdate }]
+  // items: [{ id, title, preview, size, timeUpdated, isDependency, isUpdate, activate }]
   enqueue(items) {
+    this.add(items);
+    this.process();
+  }
+
+  add(items) {
     let order = this.tasks.size;
     for (const item of items) {
       const existing = this.tasks.get(item.id);
@@ -38,7 +43,6 @@ class Installer {
       });
     }
     this.emit();
-    this.process();
   }
 
   clearFinished() {
@@ -91,8 +95,8 @@ class Installer {
             t.state = 'installing';
             this.emit();
             try {
+              // Bleibt "installing", bis die Abhängigkeiten geprüft sind (siehe unten).
               t.installedPath = this.install(t, ev.path);
-              t.state = 'done';
               t.progress = 1;
               installed.push(t);
             } catch (e) {
@@ -107,16 +111,32 @@ class Installer {
           this.emit();
         });
         clearInterval(timer);
+
+        // Abhängigkeiten aus der About.xml der frisch installierten Mods nachladen –
+        // viele Autoren tragen z. B. Harmony nur dort ein, nicht auf der Workshop-Seite.
+        const fresh = batch.filter((t) => t.state === 'installing' && t.installedPath && !t.depsChecked);
+        fresh.forEach((t) => (t.depsChecked = true));
+        if (fresh.length && this.discoverDependencies && !this.cancelled) {
+          try {
+            const extra = await this.discoverDependencies(fresh);
+            if (extra.length) this.add(extra);
+          } catch { /* Nachladen ist optional – fehlende Abhängigkeiten zeigt die Bibliothek an */ }
+        }
+        fresh.forEach((t) => (t.state = 'done'));
+        this.emit();
       }
     } catch (e) {
       for (const t of this.tasks.values()) {
-        if (['queued', 'downloading'].includes(t.state)) Object.assign(t, { state: 'error', error: e.message });
+        if (t.state === 'installing' && t.installedPath) t.state = 'done';
+        else if (['queued', 'downloading', 'installing'].includes(t.state)) Object.assign(t, { state: 'error', error: e.message });
       }
       this.emit();
     } finally {
       this.running = false;
       this.onStatus('');
       if (installed.length) this.onBatchDone(installed);
+      // Während des Abschlusses hinzugefügte Items nicht liegen lassen.
+      if (!this.cancelled && this.list().some((t) => t.state === 'queued')) this.process();
     }
   }
 

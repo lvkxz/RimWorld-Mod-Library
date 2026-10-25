@@ -42,6 +42,13 @@ function workshopIdFromUrl(url) {
   return m ? m[1] : '';
 }
 
+// Workshop-IDs verbreiteter Bibliotheken, falls ein Mod in der About.xml keinen steamWorkshopUrl angibt.
+const KNOWN_WORKSHOP_IDS = {
+  'brrainz.harmony': '2009463077',
+  'unlimitedhugs.hugslib': '818773962',
+  'oskarpotocki.vanillafactionsexpanded.core': '2023507013'
+};
+
 function parseDependencies(meta, version) {
   const deps = list(meta.modDependencies);
   const byVersion = meta.modDependenciesByVersion?.['v' + version];
@@ -49,11 +56,14 @@ function parseDependencies(meta, version) {
   const seen = new Set();
   return deps
     .filter((d) => d && typeof d === 'object' && d.packageId)
-    .map((d) => ({
-      packageId: String(d.packageId).toLowerCase(),
-      displayName: String(d.displayName || d.packageId),
-      workshopId: workshopIdFromUrl(d.steamWorkshopUrl)
-    }))
+    .map((d) => {
+      const packageId = String(d.packageId).toLowerCase();
+      return {
+        packageId,
+        displayName: String(d.displayName || d.packageId),
+        workshopId: workshopIdFromUrl(d.steamWorkshopUrl) || KNOWN_WORKSHOP_IDS[packageId] || ''
+      };
+    })
     .filter((d) => !seen.has(d.packageId) && seen.add(d.packageId));
 }
 

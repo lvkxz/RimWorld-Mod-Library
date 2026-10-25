@@ -120,6 +120,38 @@ const installer = new Installer({
   },
   onUpdate: (tasks) => send('queue:update', tasks),
   onStatus: (msg) => send('status', msg),
+  discoverDependencies: async (doneTasks) => {
+    if (!settings.get().autoDependencies) return [];
+    const { mods, version } = scan();
+    const installedPkg = new Set(mods.map((m) => m.packageId));
+    const busy = new Set(installer.list().filter((t) => t.state !== 'error').map((t) => t.id));
+    const wanted = new Map(); // workshopId -> soll aktiviert werden?
+    for (const task of doneTasks) {
+      const mod = parseMod(task.installedPath, 'local', version.short);
+      if (!mod) continue;
+      const parentActive = task.activate || modsconfig.readConfig(ctx().s.configDir).active.includes(mod.packageId);
+      for (const dep of mod.dependencies) {
+        if (installedPkg.has(dep.packageId) || !dep.workshopId) continue;
+        if (lastScan.byWorkshop.has(dep.workshopId) || busy.has(dep.workshopId)) continue;
+        wanted.set(dep.workshopId, (wanted.get(dep.workshopId) || false) || parentActive);
+      }
+    }
+    if (!wanted.size) return [];
+    const info = await workshop.details([...wanted.keys()]);
+    return [...wanted].map(([id, activate]) => {
+      const i = info.find((x) => x.id === id) || {};
+      return {
+        id,
+        title: i.title || `Workshop-Item ${id}`,
+        preview: i.preview || '',
+        size: i.size || 0,
+        timeUpdated: i.timeUpdated || 0,
+        isDependency: true,
+        isUpdate: false,
+        activate
+      };
+    });
+  },
   onBatchDone: async (done) => {
     scan();
     const toActivate = done.filter((t) => t.activate);

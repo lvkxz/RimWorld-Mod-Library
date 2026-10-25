@@ -256,7 +256,7 @@ function workshopCard(item) {
         </div>
       </div>
       <div class="card-foot">
-        <span class="grow">${item.versions.slice(0, 3).map((v) => `<span class="chip ${v === vNow ? 'chip-accent' : ''}">${h(v)}</span>`).join(' ')}</span>
+        <span class="grow">${item.versions.slice(0, 2).map((v) => `<span class="chip ${v === vNow ? 'chip-accent' : ''}">${h(v)}</span>`).join(' ')}</span>
         ${installButton(item, { small: true })}
       </div>
     </article>`;
@@ -1430,6 +1430,14 @@ window.api.on('library:changed', async () => {
   updateBadges();
   if (state.view !== 'downloads') rerenderKeepScroll();
   else patchInstallButtons();
+  if (state.drawerMod && $('#drawer').classList.contains('open')) {
+    const m = modByKey(state.drawerMod);
+    if (m) {
+      const top = $('#drawer').scrollTop;
+      openModDrawer(m);
+      $('#drawer').scrollTop = top;
+    } else closeDrawer();
+  }
   if ($('#modalBackdrop').classList.contains('open') && state.openWorkshopId && state.lastDetail?.id === state.openWorkshopId) {
     $('#modal').innerHTML = workshopDetailHtml(state.lastDetail, false);
     refreshIcons();
