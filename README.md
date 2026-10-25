@@ -34,6 +34,7 @@ Browse, install, update and sort mods in one modern desktop app. No Steam accoun
 - [Languages](#languages)
 - [Important notes](#important-notes)
 - [FAQ](#faq)
+- [Building from source](#building-from-source)
 - [License](#license)
 
 ---
@@ -145,14 +146,15 @@ flowchart LR
 
 > [!NOTE]
 > The app is for **Windows 10 and 11 (64-bit)**. It starts in **English**; you can switch to **German** under **Settings → Language**.
+> It uses Microsoft Edge WebView2, which is part of Windows 11 and current Windows 10. The installer adds it automatically if it's missing.
 
 1. Open the [**latest release**](https://github.com/lvkxz/RimWorld-Mod-Library/releases/latest).
 2. Download one of these:
 
    | File | Description |
    |---|---|
-   | `RimWorld-Mod-Library-Setup-x.y.z.exe` | **Recommended.** Installer with Start menu and desktop shortcuts and a normal uninstaller. |
-   | `RimWorld-Mod-Library-Portable-x.y.z.exe` | No installation. Runs from any folder or a USB stick. |
+   | `RimWorld-Mod-Library-Setup-x.y.z.exe` | **Recommended.** Installer (about 2 MB) with Start menu and desktop shortcuts and a normal uninstaller. |
+   | `RimWorld-Mod-Library-Portable-x.y.z.exe` | No installation (about 6 MB). Runs from any folder or a USB stick. |
 
 3. Run the file.
 
@@ -281,6 +283,32 @@ Use <i>Windows Settings → Apps</i>, or just delete the portable exe. Your mods
 
 ---
 
+## Building from source
+
+The app is built with [Tauri 2](https://tauri.app): the UI is plain HTML, CSS and JavaScript in `src/`, the backend is Rust in `src-tauri/`.
+
+**Requirements:** Windows 10/11, [Node.js](https://nodejs.org), [Rust](https://rustup.rs) (stable, MSVC toolchain).
+
+```bash
+npm install
+npm start        # development build
+npm run dist     # installer and portable exe in release/
+npm run notices  # regenerate THIRD_PARTY_NOTICES.md
+```
+
+| Path | Contents |
+|---|---|
+| `src/index.html`, `app.js`, `styles.css` | User interface |
+| `src/i18n.js` | All texts in English and German |
+| `src/bridge.js` | `window.api` for the UI, window buttons and title bar |
+| `src-tauri/src/main.rs` | Window and commands behind `window.api` |
+| `src-tauri/src/mods.rs`, `xml.rs` | Reading installed mods and their `About.xml` |
+| `src-tauri/src/modsconfig.rs` | `ModsConfig.xml`, load order sorting and problem detection |
+| `src-tauri/src/workshop.rs` | Steam Workshop search, details, dependencies and collections |
+| `src-tauri/src/steamcmd.rs`, `installer.rs` | SteamCMD setup and the download queue |
+
+---
+
 ## License
 
 Copyright © 2026 lvkxz. **All rights reserved.**
@@ -289,5 +317,5 @@ The app is free to download and use. The source code is published for transparen
 
 <div align="center">
 <br/>
-<sub>Built with Electron and Lucide icons. Made for the RimWorld community. 🛠️</sub>
+<sub>Built with Tauri and Lucide icons. Made for the RimWorld community. 🛠️</sub>
 </div>

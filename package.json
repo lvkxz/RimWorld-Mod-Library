@@ -3,66 +3,20 @@
   "productName": "RimWorld Mod Library",
   "version": "1.0.0",
   "description": "Mod library for RimWorld (Epic/GOG) with Steam Workshop integration via SteamCMD",
-  "main": "src/main/main.js",
   "author": "lvkxz",
   "license": "UNLICENSED",
   "private": true,
   "homepage": "https://github.com/lvkxz/RimWorld-Mod-Library",
   "scripts": {
-    "start": "electron .",
+    "vendor": "node scripts/vendor.js",
+    "start": "tauri dev",
     "notices": "node scripts/notices.js",
-    "dist": "node scripts/notices.js && electron-builder --win",
-    "dist:dir": "electron-builder --win dir"
-  },
-  "build": {
-    "appId": "io.github.lvkxz.rimworldmodlibrary",
-    "productName": "RimWorld Mod Library",
-    "copyright": "Copyright © 2026 lvkxz. All rights reserved.",
-    "files": [
-      "src/**/*",
-      "assets/**/*",
-      "!**/*.map",
-      "!**/*.d.ts",
-      "!node_modules/lucide/dist/esm{,/**/*}",
-      "!node_modules/lucide/dist/cjs{,/**/*}",
-      "!node_modules/lucide/dist/umd/lucide.js"
-    ],
-    "electronLanguages": ["en-US", "de"],
-    "compression": "maximum",
-    "extraFiles": [
-      { "from": "LICENSE", "to": "LICENSE.txt" },
-      { "from": "THIRD_PARTY_NOTICES.md", "to": "THIRD_PARTY_NOTICES.md" }
-    ],
-    "win": {
-      "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
-      ],
-      "icon": "assets/icon.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "RimWorld Mod Library",
-      "license": "LICENSE",
-      "artifactName": "RimWorld-Mod-Library-Setup-${version}.${ext}"
-    },
-    "portable": {
-      "artifactName": "RimWorld-Mod-Library-Portable-${version}.${ext}"
-    },
-    "directories": {
-      "output": "release"
-    }
+    "dist": "node scripts/notices.js && tauri build && node scripts/collect-release.js"
   },
   "dependencies": {
-    "fast-xml-parser": "^5.11.2",
     "lucide": "^1.61.0"
   },
   "devDependencies": {
-    "electron": "^45.0.0",
-    "electron-builder": "^26.18.0"
+    "@tauri-apps/cli": "^2.12.4"
   }
 }

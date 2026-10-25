@@ -1,9 +1,6 @@
-// Übersetzungen für Oberfläche und Hauptprozess (Englisch = Standard, Deutsch).
+// Übersetzungen der Oberfläche (Englisch = Standard, Deutsch). Texte aus dem Rust-Backend kommen als Schlüssel an (siehe bridge.js).
 // Werte sind Strings mit {platzhaltern} oder Funktionen (für Mehrzahlformen).
-(function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.I18N = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+window.I18N = (function () {
   const LANGUAGES = [
     { code: 'en', name: 'English', locale: 'en-US' },
     { code: 'de', name: 'Deutsch', locale: 'de-DE' }
@@ -337,9 +334,8 @@
     'ab.credit.ludeon': 'RimWorld by Ludeon Studios',
     'ab.credit.steamcmd': 'Downloads via SteamCMD by Valve',
     'ab.credit.modders': 'All mod authors – the mods belong to them',
-    'ab.credit.electron': 'Built with Electron',
+    'ab.credit.tauri': 'Built with Tauri',
     'ab.credit.lucide': 'Icons by Lucide',
-    'ab.credit.xml': 'XML parsing with fast-xml-parser',
     'ab.legal': 'Legal',
     'ab.copyright': '© {year} lvkxz. All rights reserved.',
     'ab.disclaimer': 'Not affiliated with, endorsed by or sponsored by Ludeon Studios, Valve or Epic Games. RimWorld is a trademark of Ludeon Studios. Steam and the Steam Workshop are trademarks of Valve Corporation.',
@@ -359,7 +355,7 @@
     'toast.installed': (p) => `${p.n === 1 ? '1 mod' : `${p.n} mods`} installed`,
     'toast.installedNotActivated': 'Installed, but not activated: {error}',
 
-    // Hauptprozess: Status & Fehler
+    // Backend: Status & Fehler
     'status.checkingDeps': 'Checking dependencies …',
     'status.steamcmdDownloading': 'Downloading SteamCMD …',
     'status.steamcmdSetup': 'Setting up SteamCMD (one time, about 1 minute) …',
@@ -697,9 +693,8 @@
     'ab.credit.ludeon': 'RimWorld von Ludeon Studios',
     'ab.credit.steamcmd': 'Downloads über SteamCMD von Valve',
     'ab.credit.modders': 'Allen Mod-Autoren – die Mods gehören ihnen',
-    'ab.credit.electron': 'Gebaut mit Electron',
+    'ab.credit.tauri': 'Gebaut mit Tauri',
     'ab.credit.lucide': 'Icons von Lucide',
-    'ab.credit.xml': 'XML-Verarbeitung mit fast-xml-parser',
     'ab.legal': 'Rechtliches',
     'ab.copyright': '© {year} lvkxz. Alle Rechte vorbehalten.',
     'ab.disclaimer': 'Nicht verbunden mit, unterstützt oder gesponsert von Ludeon Studios, Valve oder Epic Games. RimWorld ist eine Marke von Ludeon Studios. Steam und der Steam Workshop sind Marken der Valve Corporation.',
@@ -764,4 +759,4 @@
   }
 
   return { LANGUAGES, DICTS, translate, locale, normalize, has };
-});
+})();

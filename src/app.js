@@ -1201,7 +1201,7 @@ function systemInfoText() {
   const v = state.ctx?.version;
   return [
     `RimWorld Mod Library ${a.appVersion || ''}`,
-    `Electron ${a.electron || ''} · Chromium ${a.chrome || ''} · Node ${a.node || ''}`,
+    `Tauri ${a.tauri || ''} · WebView2 ${a.webview || ''} · Rust ${a.rust || ''}`,
     `${t('ab.os')}: ${a.os || ''}`,
     `RimWorld: ${state.ctx?.gameFound ? v.full : t('ab.rimworldNotFound')}`,
     `Language: ${lang()}`
@@ -1215,13 +1215,13 @@ function viewAbout() {
   const link = (url, ic, label) => `<button class="about-link" data-action="openUrl" data-url="${h(url)}">${icon(ic)}<span>${label}</span>${icon('external-link', 'ext')}</button>`;
   const credits = [
     ['gamepad-2', 'ab.credit.ludeon'], ['download', 'ab.credit.steamcmd'], ['heart', 'ab.credit.modders'],
-    ['box', 'ab.credit.electron'], ['sparkles', 'ab.credit.lucide'], ['package', 'ab.credit.xml']
+    ['box', 'ab.credit.tauri'], ['sparkles', 'ab.credit.lucide']
   ];
   return `
     <div class="view-head"><div><h1>${icon('info')}${t('ab.title')}</h1></div></div>
     <div class="settings about">
       <section class="about-hero">
-        <img src="../../assets/icon.png" alt="">
+        <img src="vendor/icon.png" alt="">
         <div class="grow">
           <h2>RimWorld Mod Library</h2>
           <p>${t('ab.tagline')}</p>
@@ -1583,7 +1583,7 @@ $('#btnLaunch').addEventListener('click', async () => {
   if (ok) toast(t('toast.launching'), 'success');
 });
 
-// Events aus dem Hauptprozess
+// Events aus dem Backend
 window.api.on('queue:update', (tasks) => {
   state.queue = tasks;
   updateBadges();

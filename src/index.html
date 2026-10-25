@@ -2,8 +2,6 @@
 <html lang="en" data-theme="rimworld">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; img-src 'self' https: file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
   <title>RimWorld Mod Library</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -59,8 +57,9 @@
   <div class="lightbox" id="lightbox"><img alt="" /></div>
   <div class="toasts" id="toasts"></div>
 
-  <script src="../../node_modules/lucide/dist/umd/lucide.min.js"></script>
-  <script src="../shared/i18n.js"></script>
+  <script src="vendor/lucide.min.js"></script>
+  <script src="i18n.js"></script>
+  <script src="bridge.js"></script>
   <script src="bbcode.js"></script>
   <script src="app.js"></script>
 </body>
