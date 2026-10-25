@@ -782,6 +782,10 @@ fn main() {
         .setup(|app| {
             // Datenordner %APPDATA%\RimWorld Mod Library (unverändert seit Version 1.0).
             store::init(app.path().config_dir()?.join("RimWorld Mod Library"));
+            std::thread::spawn(|| {
+                store::remove_electron_leftovers();
+                steamcmd::remove_update_leftovers();
+            });
             app.manage(Arc::new(Core {
                 app: app.handle().clone(),
                 scan: Mutex::new(Scan::default()),

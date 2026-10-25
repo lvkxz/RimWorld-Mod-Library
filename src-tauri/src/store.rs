@@ -15,6 +15,55 @@ pub fn user_data() -> PathBuf {
     USER_DATA.get().cloned().unwrap_or_default()
 }
 
+// Chromium-Profil von Electron (Version 1.x), lag direkt im Datenordner. WebView2 legt sein Profil unter %LOCALAPPDATA% ab.
+const ELECTRON_LEFTOVERS: &[&str] = &[
+    "Cache",
+    "Code Cache",
+    "Crashpad",
+    "DawnCache",
+    "DawnGraphiteCache",
+    "DawnWebGPUCache",
+    "GPUCache",
+    "GPUPersistentCache",
+    "GrShaderCache",
+    "ShaderCache",
+    "IndexedDB",
+    "Local Storage",
+    "Session Storage",
+    "Service Worker",
+    "Shared Dictionary",
+    "SharedStorage",
+    "WebStorage",
+    "blob_storage",
+    "databases",
+    "Network",
+    "Partitions",
+    "Dictionaries",
+    "Local State",
+    "Preferences",
+    "DevToolsActivePort",
+    "lockfile",
+    "Cookies",
+    "Cookies-journal",
+    "Network Persistent State",
+    "TransportSecurity",
+    "Trust Tokens",
+    "Trust Tokens-journal",
+    "DIPS",
+    "DIPS-journal",
+    "DIPS-wal",
+    "declarative_performance_observer.db",
+    "declarative_performance_observer.db-journal",
+];
+
+/// Entfernt die Reste von Version 1.x, soweit vorhanden. Gesperrte Dateien (1.x läuft noch) bleiben bis zum nächsten Start.
+pub fn remove_electron_leftovers() {
+    for name in ELECTRON_LEFTOVERS {
+        let path = user_data().join(name);
+        let _ = if path.is_dir() { fs::remove_dir_all(&path) } else { fs::remove_file(&path) };
+    }
+}
+
 fn default_settings() -> Value {
     json!({
         "language": "en",            // 'en' | 'de'

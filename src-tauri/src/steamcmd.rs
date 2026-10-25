@@ -271,3 +271,14 @@ pub fn clear_cache() -> Res<()> {
         _ => Ok(()),
     }
 }
+
+// SteamCMD lässt nach Selbst-Updates die Vorversionen als *.old und *.delete liegen.
+pub fn remove_update_leftovers() {
+    let Ok(entries) = fs::read_dir(base_dir()) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if (name.ends_with(".old") || name.ends_with(".delete")) && entry.path().is_file() {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
