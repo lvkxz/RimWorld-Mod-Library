@@ -1,0 +1,36 @@
+{
+  "name": "rimworld-mod-library",
+  "productName": "RimWorld Mod Library",
+  "version": "1.0.0",
+  "description": "Mod-Bibliothek für RimWorld (Epic/GOG) mit Steam-Workshop-Anbindung über SteamCMD",
+  "main": "src/main/main.js",
+  "author": "lvkxz",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win dir"
+  },
+  "build": {
+    "appId": "io.github.lvkxz.rimworldmodlibrary",
+    "productName": "RimWorld Mod Library",
+    "files": [
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": "dir",
+      "icon": "assets/icon.png"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.11.2",
+    "lucide": "^1.61.0"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
+  }
+}

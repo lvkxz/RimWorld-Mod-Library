@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="de" data-theme="rimworld">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' https: file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>RimWorld Mod Library</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="titlebar">
+    <div class="brand">
+      <span class="brand-mark"><i data-lucide="puzzle"></i></span>
+      <span class="brand-name">RimWorld <b>Mod Library</b></span>
+    </div>
+    <div class="titlebar-search">
+      <i data-lucide="search"></i>
+      <input id="globalSearch" type="search" placeholder="Workshop durchsuchen …  (Strg+K)" autocomplete="off" />
+    </div>
+    <div class="titlebar-status" id="globalStatus"></div>
+  </header>
+
+  <div class="shell">
+    <nav class="sidebar">
+      <div class="nav-group">
+        <div class="nav-label">Meine Mods</div>
+        <button class="nav-item" data-view="library"><i data-lucide="library"></i><span>Bibliothek</span><em class="badge" id="badgeLibrary"></em></button>
+        <button class="nav-item" data-view="loadorder"><i data-lucide="list-ordered"></i><span>Ladereihenfolge</span><em class="badge badge-warn" id="badgeIssues"></em></button>
+        <button class="nav-item" data-view="updates"><i data-lucide="refresh-cw"></i><span>Updates</span><em class="badge badge-accent" id="badgeUpdates"></em></button>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Steam Workshop</div>
+        <button class="nav-item" data-view="workshop"><i data-lucide="compass"></i><span>Durchsuchen</span></button>
+        <button class="nav-item" data-view="suggestions"><i data-lucide="sparkles"></i><span>Vorschläge</span></button>
+        <button class="nav-item" data-view="collections"><i data-lucide="layers"></i><span>Collections</span></button>
+        <button class="nav-item" data-view="downloads"><i data-lucide="download"></i><span>Downloads</span><em class="badge badge-accent" id="badgeDownloads"></em></button>
+      </div>
+      <div class="nav-spacer"></div>
+      <button class="nav-item" data-view="settings"><i data-lucide="settings"></i><span>Einstellungen</span></button>
+      <div class="game-card">
+        <div class="game-card-info">
+          <i data-lucide="gamepad-2"></i>
+          <div>
+            <div class="game-title">RimWorld</div>
+            <div class="game-meta" id="gameMeta">–</div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block" id="btnLaunch"><i data-lucide="play"></i>Spielen</button>
+      </div>
+    </nav>
+
+    <main class="content" id="content"></main>
+  </div>
+
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+  <aside class="drawer" id="drawer"></aside>
+  <div class="modal-backdrop" id="modalBackdrop"><div class="modal" id="modal"></div></div>
+  <div class="lightbox" id="lightbox"><img alt="" /></div>
+  <div class="toasts" id="toasts"></div>
+
+  <script src="../../node_modules/lucide/dist/umd/lucide.min.js"></script>
+  <script src="bbcode.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
