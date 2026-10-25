@@ -20,8 +20,15 @@
     "copyright": "Copyright © 2026 lvkxz. All rights reserved.",
     "files": [
       "src/**/*",
-      "assets/**/*"
+      "assets/**/*",
+      "!**/*.map",
+      "!**/*.d.ts",
+      "!node_modules/lucide/dist/esm{,/**/*}",
+      "!node_modules/lucide/dist/cjs{,/**/*}",
+      "!node_modules/lucide/dist/umd/lucide.js"
     ],
+    "electronLanguages": ["en-US", "de"],
+    "compression": "maximum",
     "extraFiles": [
       { "from": "LICENSE", "to": "LICENSE.txt" },
       { "from": "THIRD_PARTY_NOTICES.md", "to": "THIRD_PARTY_NOTICES.md" }
