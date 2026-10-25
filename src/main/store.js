@@ -4,6 +4,7 @@ const path = require('path');
 const { app } = require('electron');
 
 const DEFAULT_SETTINGS = {
+  language: 'en',             // 'en' | 'de'
   theme: 'rimworld',          // 'light' | 'dark' | 'rimworld'
   gameDir: '',                // RimWorld-Installationsordner
   modsDir: '',                // Mods-Ordner (Standard: <gameDir>/Mods)

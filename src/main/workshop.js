@@ -2,6 +2,8 @@
 // Suche: eingebettete SSR-Daten der Workshop-Seite. Details: öffentliche ISteamRemoteStorage-API.
 // Abhängigkeiten & Screenshots: Detailseite des Mods.
 
+const { tr } = require('./i18n');
+
 const APPID = 294100;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
 const API = 'https://api.steampowered.com/ISteamRemoteStorage';
@@ -24,7 +26,7 @@ async function fetchText(url, init = {}) {
     headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.8', ...(init.headers || {}) },
     signal: AbortSignal.timeout(25000)
   });
-  if (!res.ok) throw new Error(`Steam antwortet mit HTTP ${res.status}`);
+  if (!res.ok) throw new Error(tr('err.steamHttp', { status: res.status }));
   return res.text();
 }
 
@@ -209,7 +211,7 @@ function parseId(input) {
 // Inhalt einer Collection (inkl. verschachtelter Collections).
 async function collection(input) {
   const id = parseId(input);
-  if (!id) throw new Error('Keine gültige Collection-ID oder URL');
+  if (!id) throw new Error(tr('err.invalidCollection'));
   const seen = new Set();
   const items = [];
   async function walk(cid, depth) {
@@ -218,7 +220,7 @@ async function collection(input) {
     const res = await postApi('GetCollectionDetails', { collectioncount: '1', 'publishedfileids[0]': cid });
     const entry = res.collectiondetails?.[0];
     if (!entry || entry.result !== 1 || !entry.children) {
-      if (depth === 0) throw new Error('Das ist keine öffentliche Collection');
+      if (depth === 0) throw new Error(tr('err.notCollection'));
       return;
     }
     for (const c of entry.children) {

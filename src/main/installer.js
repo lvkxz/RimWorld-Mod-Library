@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const steamcmd = require('./steamcmd');
 const { installs } = require('./store');
+const { tr, has } = require('./i18n');
 
 const MAX_ATTEMPTS = 3;
 
@@ -53,7 +54,7 @@ class Installer {
   cancel() {
     this.cancelled = true;
     for (const t of this.tasks.values()) {
-      if (t.state === 'queued') Object.assign(t, { state: 'error', error: 'Abgebrochen' });
+      if (t.state === 'queued') Object.assign(t, { state: 'error', error: tr('dlerr.Cancelled') });
     }
     steamcmd.cancel();
     this.emit();
@@ -142,15 +143,15 @@ class Installer {
 
   install(task, downloadedPath) {
     const src = fs.existsSync(downloadedPath) ? downloadedPath : steamcmd.itemDir(task.id);
-    if (!fs.existsSync(src)) throw new Error('Heruntergeladene Dateien nicht gefunden');
+    if (!fs.existsSync(src)) throw new Error(tr('err.filesMissing'));
     const modsDir = this.getModsDir();
-    if (!modsDir) throw new Error('Kein Mods-Ordner eingestellt');
+    if (!modsDir) throw new Error(tr('err.noModsDir'));
     fs.mkdirSync(modsDir, { recursive: true });
 
     const existing = this.findInstalledPath(task.id);
     const target = existing || path.join(modsDir, task.id);
     if (existing && fs.existsSync(path.join(existing, '.git'))) {
-      throw new Error('Vorhandene Version ist ein Git-Repository – wird nicht überschrieben');
+      throw new Error(tr('err.gitRepo'));
     }
     fs.rmSync(target, { recursive: true, force: true });
     try {
@@ -171,14 +172,10 @@ class Installer {
   }
 }
 
+// SteamCMD-Fehlergründe (z. B. "Timeout", "Access Denied") in lesbare Texte übersetzen.
 function translateError(reason) {
-  const map = {
-    Timeout: 'Zeitüberschreitung beim Download',
-    Failure: 'Download fehlgeschlagen (Item evtl. privat oder entfernt)',
-    'File Not Found': 'Item existiert nicht mehr',
-    'Access Denied': 'Kein Zugriff auf dieses Item'
-  };
-  return map[reason] || reason || 'Unbekannter Fehler';
+  if (!reason) return tr('common.unknownError');
+  return has('dlerr.' + reason) ? tr('dlerr.' + reason) : reason;
 }
 
 module.exports = { Installer };

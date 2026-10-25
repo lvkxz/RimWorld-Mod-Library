@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de" data-theme="rimworld">
+<html lang="en" data-theme="rimworld">
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy"
@@ -15,7 +15,7 @@
     </div>
     <div class="titlebar-search">
       <i data-lucide="search"></i>
-      <input id="globalSearch" type="search" placeholder="Workshop durchsuchen …  (Strg+K)" autocomplete="off" />
+      <input id="globalSearch" type="search" data-i18n-placeholder="nav.searchPlaceholder" autocomplete="off" />
     </div>
     <div class="titlebar-status" id="globalStatus"></div>
   </header>
@@ -23,20 +23,20 @@
   <div class="shell">
     <nav class="sidebar">
       <div class="nav-group">
-        <div class="nav-label">Meine Mods</div>
-        <button class="nav-item" data-view="library"><i data-lucide="library"></i><span>Bibliothek</span><em class="badge" id="badgeLibrary"></em></button>
-        <button class="nav-item" data-view="loadorder"><i data-lucide="list-ordered"></i><span>Ladereihenfolge</span><em class="badge badge-warn" id="badgeIssues"></em></button>
-        <button class="nav-item" data-view="updates"><i data-lucide="refresh-cw"></i><span>Updates</span><em class="badge badge-accent" id="badgeUpdates"></em></button>
+        <div class="nav-label" data-i18n="nav.myMods"></div>
+        <button class="nav-item" data-view="library"><i data-lucide="library"></i><span data-i18n="nav.library"></span><em class="badge" id="badgeLibrary"></em></button>
+        <button class="nav-item" data-view="loadorder"><i data-lucide="list-ordered"></i><span data-i18n="nav.loadOrder"></span><em class="badge badge-warn" id="badgeIssues"></em></button>
+        <button class="nav-item" data-view="updates"><i data-lucide="refresh-cw"></i><span data-i18n="nav.updates"></span><em class="badge badge-accent" id="badgeUpdates"></em></button>
       </div>
       <div class="nav-group">
-        <div class="nav-label">Steam Workshop</div>
-        <button class="nav-item" data-view="workshop"><i data-lucide="compass"></i><span>Durchsuchen</span></button>
-        <button class="nav-item" data-view="suggestions"><i data-lucide="sparkles"></i><span>Vorschläge</span></button>
-        <button class="nav-item" data-view="collections"><i data-lucide="layers"></i><span>Collections</span></button>
-        <button class="nav-item" data-view="downloads"><i data-lucide="download"></i><span>Downloads</span><em class="badge badge-accent" id="badgeDownloads"></em></button>
+        <div class="nav-label" data-i18n="nav.workshop"></div>
+        <button class="nav-item" data-view="workshop"><i data-lucide="compass"></i><span data-i18n="nav.browse"></span></button>
+        <button class="nav-item" data-view="suggestions"><i data-lucide="sparkles"></i><span data-i18n="nav.suggestions"></span></button>
+        <button class="nav-item" data-view="collections"><i data-lucide="layers"></i><span data-i18n="nav.collections"></span></button>
+        <button class="nav-item" data-view="downloads"><i data-lucide="download"></i><span data-i18n="nav.downloads"></span><em class="badge badge-accent" id="badgeDownloads"></em></button>
       </div>
       <div class="nav-spacer"></div>
-      <button class="nav-item" data-view="settings"><i data-lucide="settings"></i><span>Einstellungen</span></button>
+      <button class="nav-item" data-view="settings"><i data-lucide="settings"></i><span data-i18n="nav.settings"></span></button>
       <div class="game-card">
         <div class="game-card-info">
           <i data-lucide="gamepad-2"></i>
@@ -45,7 +45,7 @@
             <div class="game-meta" id="gameMeta">–</div>
           </div>
         </div>
-        <button class="btn btn-primary btn-block" id="btnLaunch"><i data-lucide="play"></i>Spielen</button>
+        <button class="btn btn-primary btn-block" id="btnLaunch"><i data-lucide="play"></i><span data-i18n="nav.play"></span></button>
       </div>
     </nav>
 
@@ -59,6 +59,7 @@
   <div class="toasts" id="toasts"></div>
 
   <script src="../../node_modules/lucide/dist/umd/lucide.min.js"></script>
+  <script src="../shared/i18n.js"></script>
   <script src="bbcode.js"></script>
   <script src="app.js"></script>
 </body>

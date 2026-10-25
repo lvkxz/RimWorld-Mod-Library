@@ -13,6 +13,7 @@ Browse, install, update and sort mods in one modern desktop app. No Steam accoun
 ![RimWorld](https://img.shields.io/badge/RimWorld-1.6-8a5a2b)
 ![Epic Games](https://img.shields.io/badge/Epic%20Games-supported-313131?logo=epicgames&logoColor=white)
 ![GOG](https://img.shields.io/badge/GOG-supported-86328A?logo=gogdotcom&logoColor=white)
+![Languages](https://img.shields.io/badge/Languages-English%20%7C%20Deutsch-4c8f5a)
 
 <br/>
 
@@ -30,6 +31,7 @@ Browse, install, update and sort mods in one modern desktop app. No Steam accoun
 - [Installation](#installation)
 - [Getting started](#getting-started)
 - [Themes](#themes)
+- [Languages](#languages)
 - [Important notes](#important-notes)
 - [FAQ](#faq)
 - [License](#license)
@@ -112,6 +114,7 @@ The Steam Workshop is where nearly all RimWorld mods live, but it only works wit
 - 🗑️ **Safe uninstall**: removed mods go to the Recycle Bin
 - 💾 **Automatic backup** of `ModsConfig.xml` before every change
 - 🧭 **Auto-detection** of Epic, GOG and Steam installations and your game version
+- 🌐 **English and German** interface, switchable at any time
 
 ---
 
@@ -138,7 +141,7 @@ flowchart LR
 ## Installation
 
 > [!NOTE]
-> The app is for **Windows 10 and 11 (64-bit)**. The user interface is currently in **German**.
+> The app is for **Windows 10 and 11 (64-bit)**. It starts in **English**; you can switch to **German** under **Settings → Language**.
 
 1. Open the [**latest release**](https://github.com/lvkxz/RimWorld-Mod-Library/releases/latest).
 2. Download one of these:
@@ -157,11 +160,11 @@ flowchart LR
 
 ## Getting started
 
-1. **Start the app.** It finds your RimWorld installation automatically. If it doesn't, choose the folder under **Einstellungen** (Settings).
-2. **Find mods:** Go to **Durchsuchen** (Browse) or look at **Vorschläge** (Suggestions) for a good starter set.
-3. **Click „Installieren“** (Install). Dependencies are added automatically. On the very first download, SteamCMD is set up, which takes about a minute.
-4. **Check the load order** under **Ladereihenfolge**. Click **Automatisch sortieren** (Auto-sort) if a warning appears.
-5. **Click „Spielen“** (Play) and have fun. 🎉
+1. **Start the app.** It finds your RimWorld installation automatically. If it doesn't, choose the folder under **Settings**.
+2. **Find mods:** Go to **Browse**, or open **Suggestions** for a good starter set.
+3. **Click Install.** Dependencies are added automatically. On the very first download, SteamCMD is set up, which takes about a minute.
+4. **Check the load order** under **Load order**. Click **Auto-sort** if a warning appears.
+5. **Click Play** and have fun. 🎉
 
 <details>
 <summary><b>Where does the app store its files?</b></summary>
@@ -179,7 +182,7 @@ flowchart LR
 
 ## Themes
 
-Choose your style under **Einstellungen → Design**:
+Choose your style under **Settings → Appearance**:
 
 <table>
   <tr>
@@ -195,6 +198,23 @@ Choose your style under **Einstellungen → Design**:
 </table>
 
 <p align="center"><img src="docs/screenshots/settings.png" alt="Settings" width="720" /></p>
+
+---
+
+## Languages
+
+The app is available in **English** (default) and **German**. Switch under **Settings → Language**. All texts change instantly, including hints and error messages, and the choice is remembered.
+
+<table>
+  <tr>
+    <th>English</th>
+    <th>Deutsch</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/theme-rimworld.png" alt="English interface" /></td>
+    <td><img src="docs/screenshots/language-de.png" alt="German interface" /></td>
+  </tr>
+</table>
 
 ---
 
@@ -223,19 +243,19 @@ No. SteamCMD logs in anonymously, and RimWorld Workshop items can be downloaded 
 <details>
 <summary><b>Does it work with the GOG or DRM-free version?</b></summary>
 <br/>
-Yes. Choose your RimWorld folder under <b>Einstellungen</b> if it isn't detected automatically.
+Yes. Choose your RimWorld folder under <b>Settings</b> if it isn't detected automatically.
 </details>
 
 <details>
-<summary><b>A download fails with "Zeitüberschreitung" (timeout).</b></summary>
+<summary><b>A download fails with "Download timed out".</b></summary>
 <br/>
-Large mods sometimes time out on Steam's side. The app retries automatically up to three times. If it still fails, click <b>Erneut</b> (Retry) in the download list.
+Large mods sometimes time out on Steam's side. The app retries automatically up to three times. If it still fails, click <b>Retry</b> in the download list.
 </details>
 
 <details>
 <summary><b>A mod shows a red warning sign.</b></summary>
 <br/>
-Open the mod, because the details explain the problem. Usually a dependency is missing or loads in the wrong order. Missing dependencies can be installed with one click, and <b>Automatisch sortieren</b> fixes the order.
+Open the mod, because the details explain the problem. Usually a dependency is missing or loads in the wrong order. Missing dependencies can be installed with one click, and <b>Auto-sort</b> fixes the order.
 </details>
 
 <details>

@@ -1,4 +1,4 @@
-/* global lucide, bbcode, escapeHtml */
+/* global lucide, bbcode, escapeHtml, I18N */
 'use strict';
 
 // ====================================================================
@@ -31,25 +31,47 @@ const icon = (name, cls = '') => `<i data-lucide="${name}" class="${cls}"></i>`;
 const content = () => $('#content');
 const refreshIcons = () => lucide.createIcons({ icons: lucide.icons });
 
-const nf = new Intl.NumberFormat('de-DE', { notation: 'compact', maximumFractionDigits: 1 });
-const fmtNum = (n) => nf.format(n || 0);
-const fmtDate = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–');
+const settings = () => state.ctx?.settings || {};
+const lang = () => I18N.normalize(settings().language);
+const t = (key, params) => I18N.translate(lang(), key, params);
+const locale = () => I18N.locale(lang());
+
+const fmtNum = (n) => new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(n || 0);
+const fmtInt = (n) => (n || 0).toLocaleString(locale());
+const fmtDate = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString(locale(), { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–');
 function fmtSize(bytes) {
   if (!bytes) return '–';
   const u = ['B', 'KB', 'MB', 'GB'];
   let i = 0;
   let n = bytes;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-  return `${n.toFixed(n >= 100 || i === 0 ? 0 : 1)} ${u[i]}`;
+  return `${n.toLocaleString(locale(), { maximumFractionDigits: n >= 100 || i === 0 ? 0 : 1 })} ${u[i]}`;
 }
 function starsHtml(rating) {
   if (rating < 0) return '';
-  let out = '<span class="stars" title="' + rating + ' von 5 Sternen">';
+  let out = `<span class="stars" title="${h(t('common.stars', { rating }))}">`;
   for (let i = 1; i <= 5; i++) out += icon('star', i <= rating ? '' : 'off');
   return out + '</span>';
 }
 const versionNow = () => state.ctx?.version?.short || '';
-const settings = () => state.ctx?.settings || {};
+const by = (author) => t('common.by', { author });
+const issueText = (issue) => t('issue.' + issue.code, issue.params);
+
+// Feste Texte in index.html (data-i18n / data-i18n-placeholder) übersetzen.
+function applyStaticTexts() {
+  document.documentElement.lang = lang();
+  document.querySelectorAll('[data-i18n]').forEach((el) => (el.textContent = t(el.dataset.i18n)));
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => (el.placeholder = t(el.dataset.i18nPlaceholder)));
+  updateGameMeta();
+}
+
+function updateGameMeta() {
+  if (!state.ctx) return;
+  const v = state.ctx.version;
+  $('#gameMeta').textContent = state.ctx.gameFound
+    ? t('game.meta', { version: v.short || '?', source: state.ctx.settings.epicAppName ? 'Epic Games' : t('game.sourceLocal') })
+    : t('game.notFound');
+}
 
 function toast(text, type = 'info') {
   const icons = { info: 'info', success: 'circle-check-big', warning: 'triangle-alert', error: 'circle-alert' };
@@ -61,11 +83,11 @@ function toast(text, type = 'info') {
   setTimeout(() => el.remove(), type === 'error' ? 7000 : 4200);
 }
 
-async function safe(fn, fallbackMsg) {
+async function safe(fn) {
   try {
     return await fn();
   } catch (e) {
-    toast(e.message || fallbackMsg || 'Unbekannter Fehler', 'error');
+    toast(e.message || t('common.unknownError'), 'error');
     return undefined;
   }
 }
@@ -73,7 +95,7 @@ async function safe(fn, fallbackMsg) {
 // ====================================================================
 // Dialoge
 // ====================================================================
-function confirmDialog({ title, text, list = [], ok = 'OK', cancel = 'Abbrechen', danger = false, iconName = 'circle-alert' }) {
+function confirmDialog({ title, text, list = [], ok = t('common.ok'), cancel = t('common.cancel'), danger = false, iconName = 'circle-alert' }) {
   return new Promise((resolve) => {
     const modal = $('#modal');
     modal.className = 'modal small';
@@ -127,10 +149,7 @@ function closeDrawer() {
 async function loadContext() {
   state.ctx = await window.api.context();
   document.documentElement.dataset.theme = state.ctx.settings.theme;
-  const v = state.ctx.version;
-  $('#gameMeta').textContent = state.ctx.gameFound
-    ? `Version ${v.short || '?'} · ${state.ctx.settings.epicAppName ? 'Epic Games' : 'Lokal'}`
-    : 'Nicht gefunden';
+  applyStaticTexts();
 }
 
 async function loadLibrary() {
@@ -159,7 +178,7 @@ function updateBadges() {
   set('#badgeLibrary', local);
   set('#badgeIssues', issueCount(state.lo.dirty ? state.lo.issues : state.lib?.issues));
   set('#badgeUpdates', state.updates?.length || 0);
-  const busy = state.queue.filter((t) => ['queued', 'downloading', 'installing'].includes(t.state)).length;
+  const busy = state.queue.filter((x) => ['queued', 'downloading', 'installing'].includes(x.state)).length;
   set('#badgeDownloads', busy);
 }
 
@@ -198,7 +217,7 @@ const afterRender = {};
 // Gemeinsame Bausteine
 // ====================================================================
 function queueTask(id) {
-  return state.queue.find((t) => t.id === id && ['queued', 'downloading', 'installing'].includes(t.state));
+  return state.queue.find((x) => x.id === id && ['queued', 'downloading', 'installing'].includes(x.state));
 }
 
 function installButton(item, { small = false } = {}) {
@@ -208,15 +227,15 @@ function installButton(item, { small = false } = {}) {
   let inner;
   if (task) {
     const pct = task.state === 'downloading' && task.progress ? ` ${Math.round(task.progress * 100)} %` : '';
-    const label = task.state === 'queued' ? 'Wartet …' : task.state === 'installing' ? 'Installiert …' : `Lädt${pct}`;
-    inner = `<button class="btn ${sm}" disabled>${icon('loader-circle', 'spin')}${label}</button>`;
+    const label = task.state === 'queued' ? t('common.waiting') : task.state === 'installing' ? t('common.installing') : t('common.downloading', { pct });
+    inner = `<button class="btn ${sm}" disabled>${icon('loader-circle', 'spin')}${h(label)}</button>`;
   } else if (state.installedWs.has(id)) {
     const hasUpdate = state.updates?.some((u) => u.id === id);
     inner = hasUpdate
-      ? `<button class="btn btn-primary ${sm}" data-action="update" data-id="${id}">${icon('refresh-cw')}Update</button>`
-      : `<button class="btn btn-ok ${sm}" data-action="showInstalled" data-id="${id}">${icon('check')}Installiert</button>`;
+      ? `<button class="btn btn-primary ${sm}" data-action="update" data-id="${id}">${icon('refresh-cw')}${t('common.update')}</button>`
+      : `<button class="btn btn-ok ${sm}" data-action="showInstalled" data-id="${id}">${icon('check')}${t('common.installed')}</button>`;
   } else {
-    inner = `<button class="btn btn-primary ${sm}" data-action="install" data-id="${id}">${icon('download')}Installieren</button>`;
+    inner = `<button class="btn btn-primary ${sm}" data-action="install" data-id="${id}">${icon('download')}${t('common.install')}</button>`;
   }
   return `<span class="install-slot" data-slot="${id}" data-small="${small ? 1 : 0}">${inner}</span>`;
 }
@@ -241,18 +260,18 @@ function workshopCard(item) {
       <div class="card-img">
         ${item.preview ? `<img src="${h(item.preview)}" loading="lazy" alt="">` : `<div class="placeholder">${icon('image-off')}</div>`}
         <div class="card-flags">
-          <span>${installed ? `<span class="chip chip-ok">${icon('check')}Installiert</span>` : ''}</span>
-          <span>${fits ? '' : `<span class="chip chip-warn" title="Unterstützt: ${h(item.versions.join(', '))}">${icon('triangle-alert')}${h(item.versions[0] || '?')}</span>`}</span>
+          <span>${installed ? `<span class="chip chip-ok">${icon('check')}${t('common.installed')}</span>` : ''}</span>
+          <span>${fits ? '' : `<span class="chip chip-warn" title="${h(t('common.supports', { versions: item.versions.join(', ') }))}">${icon('triangle-alert')}${h(item.versions[0] || '?')}</span>`}</span>
         </div>
       </div>
       <div class="card-body">
         <div class="card-title">${h(item.title)}</div>
-        <div class="card-sub">${item.author ? 'von ' + h(item.author) : '&nbsp;'}</div>
+        <div class="card-sub">${item.author ? h(by(item.author)) : '&nbsp;'}</div>
         ${item.shortDescription ? `<div class="card-desc">${h(item.shortDescription)}</div>` : ''}
         <div class="card-meta">
-          <span title="Abonnenten">${icon('users')}${fmtNum(item.subscriptions)}</span>
+          <span title="${h(t('common.subscribers'))}">${icon('users')}${fmtNum(item.subscriptions)}</span>
           ${starsHtml(item.stars)}
-          <span title="Zuletzt aktualisiert">${icon('clock')}${fmtDate(item.timeUpdated)}</span>
+          <span title="${h(t('common.lastUpdated'))}">${icon('clock')}${fmtDate(item.timeUpdated)}</span>
         </div>
       </div>
       <div class="card-foot">
@@ -274,9 +293,9 @@ function modThumb(mod, cls = 'row-thumb') {
 }
 
 function sourceChip(mod) {
-  if (mod.official) return `<span class="chip chip-accent">${icon('crown')}Offiziell</span>`;
-  if (mod.workshopId) return `<span class="chip">${icon('store')}Workshop</span>`;
-  return `<span class="chip">${icon('folder')}Lokal</span>`;
+  if (mod.official) return `<span class="chip chip-accent">${icon('crown')}${t('common.official')}</span>`;
+  if (mod.workshopId) return `<span class="chip">${icon('store')}${t('common.workshop')}</span>`;
+  return `<span class="chip">${icon('folder')}${t('common.local')}</span>`;
 }
 
 function issuesFor(pkg) {
@@ -286,7 +305,7 @@ function issuesFor(pkg) {
 function issueChip(list) {
   if (!list.length) return '';
   const err = list.some((i) => i.level === 'error');
-  return `<span class="chip ${err ? 'chip-err' : 'chip-warn'}" title="${h(list.map((i) => i.text).join('\n'))}">${icon(err ? 'circle-alert' : 'triangle-alert')}${list.length}</span>`;
+  return `<span class="chip ${err ? 'chip-err' : 'chip-warn'}" title="${h(list.map(issueText).join('\n'))}">${icon(err ? 'circle-alert' : 'triangle-alert')}${list.length}</span>`;
 }
 
 // ====================================================================
@@ -309,12 +328,12 @@ function filteredMods() {
 function viewLibrary() {
   if (!state.ctx?.gameFound) {
     return `
-      <div class="view-head"><div><h1>${icon('library')}Bibliothek</h1></div></div>
-      <div class="callout err">${icon('circle-alert')}<div class="grow"><b>RimWorld wurde nicht gefunden</b>
-      <p>Bitte wähle den Installationsordner von RimWorld in den Einstellungen aus.</p></div>
-      <button class="btn btn-primary" data-action="nav" data-view="settings">${icon('settings')}Einstellungen</button></div>`;
+      <div class="view-head"><div><h1>${icon('library')}${t('lib.title')}</h1></div></div>
+      <div class="callout err">${icon('circle-alert')}<div class="grow"><b>${t('lib.notFoundTitle')}</b>
+      <p>${t('lib.notFoundText')}</p></div>
+      <button class="btn btn-primary" data-action="nav" data-view="settings">${icon('settings')}${t('nav.settings')}</button></div>`;
   }
-  if (!state.lib) return `<div class="empty">${icon('loader-circle', 'spin')}<p>Mods werden geladen …</p></div>`;
+  if (!state.lib) return `<div class="empty">${icon('loader-circle', 'spin')}<p>${t('lib.loading')}</p></div>`;
 
   const mods = state.lib.mods;
   const local = mods.filter((m) => !m.official);
@@ -324,24 +343,23 @@ function viewLibrary() {
   const view = settings().libraryView || 'grid';
 
   const filters = [
-    ['all', 'Alle', 'layout-grid'], ['active', 'Aktiv', 'circle-check-big'], ['inactive', 'Inaktiv', 'ban'],
-    ['issues', 'Probleme', 'triangle-alert'], ['official', 'Offiziell', 'crown']
+    ['all', 'layout-grid'], ['active', 'circle-check-big'], ['inactive', 'ban'], ['issues', 'triangle-alert'], ['official', 'crown']
   ];
 
   let body;
   if (!local.length && state.libFilter === 'all' && !state.libQuery) {
     body = `
-      <div class="empty">${icon('package')}<h3>Noch keine Mods installiert</h3>
-        <p>Stöbere im Steam Workshop oder schau dir unsere Vorschläge für den Einstieg an.</p>
+      <div class="empty">${icon('package')}<h3>${t('lib.emptyTitle')}</h3>
+        <p>${t('lib.emptyText')}</p>
         <div style="display:flex;gap:8px;margin-top:8px">
-          <button class="btn btn-primary" data-action="nav" data-view="suggestions">${icon('sparkles')}Vorschläge ansehen</button>
-          <button class="btn" data-action="nav" data-view="workshop">${icon('compass')}Workshop durchsuchen</button>
+          <button class="btn btn-primary" data-action="nav" data-view="suggestions">${icon('sparkles')}${t('lib.showSuggestions')}</button>
+          <button class="btn" data-action="nav" data-view="workshop">${icon('compass')}${t('lib.browseWorkshop')}</button>
         </div>
       </div>
-      <div class="section-head"><h2>${icon('crown')}Offizielle Inhalte</h2></div>
+      <div class="section-head"><h2>${icon('crown')}${t('lib.officialContent')}</h2></div>
       <div class="grid">${mods.filter((m) => m.official).map(libCard).join('')}</div>`;
   } else if (!list.length) {
-    body = `<div class="empty">${icon('search')}<h3>Keine Treffer</h3><p>Passe Suche oder Filter an.</p></div>`;
+    body = `<div class="empty">${icon('search')}<h3>${t('lib.noResults')}</h3><p>${t('lib.noResultsText')}</p></div>`;
   } else if (view === 'list') {
     body = `<div class="list">${list.map(libRow).join('')}</div>`;
   } else {
@@ -350,26 +368,26 @@ function viewLibrary() {
 
   return `
     <div class="view-head">
-      <div><h1>${icon('library')}Bibliothek</h1><p>Deine installierten Mods für RimWorld ${h(versionNow())}</p></div>
+      <div><h1>${icon('library')}${t('lib.title')}</h1><p>${h(t('lib.subtitle', { version: versionNow() }))}</p></div>
       <div class="view-actions">
-        <button class="btn" data-action="openPath" data-path="${h(settings().modsDir)}">${icon('folder-open')}Mods-Ordner</button>
-        <button class="btn btn-icon" data-action="reloadLibrary" title="Neu einlesen">${icon('rotate-ccw')}</button>
+        <button class="btn" data-action="openPath" data-path="${h(settings().modsDir)}">${icon('folder-open')}${t('lib.modsFolder')}</button>
+        <button class="btn btn-icon" data-action="reloadLibrary" title="${h(t('lib.rescan'))}">${icon('rotate-ccw')}</button>
       </div>
     </div>
     <div class="stat-row">
-      <div class="stat">${icon('package')}<div><b>${local.length}</b><small>Mods installiert</small></div></div>
-      <div class="stat ok">${icon('circle-check-big')}<div><b>${active}</b><small>Aktiv (inkl. Core/DLC)</small></div></div>
-      <div class="stat ${issues ? 'warn' : 'ok'}">${icon(issues ? 'triangle-alert' : 'shield-alert')}<div><b>${issues}</b><small>${issues ? 'Hinweise zur Ladereihenfolge' : 'Keine Probleme'}</small></div></div>
-      <div class="stat">${icon('refresh-cw')}<div><b>${state.updates ? state.updates.length : '…'}</b><small>Updates verfügbar</small></div></div>
+      <div class="stat">${icon('package')}<div><b>${local.length}</b><small>${t('lib.statInstalled')}</small></div></div>
+      <div class="stat ok">${icon('circle-check-big')}<div><b>${active}</b><small>${t('lib.statActive')}</small></div></div>
+      <div class="stat ${issues ? 'warn' : 'ok'}">${icon(issues ? 'triangle-alert' : 'shield-alert')}<div><b>${issues}</b><small>${issues ? t('lib.statIssues') : t('lib.statNoIssues')}</small></div></div>
+      <div class="stat">${icon('refresh-cw')}<div><b>${state.updates ? state.updates.length : '…'}</b><small>${t('lib.statUpdates')}</small></div></div>
     </div>
-    ${!state.lib.configExists ? `<div class="callout">${icon('info')}<div class="grow"><b>RimWorld wurde noch nie gestartet</b><p>Es gibt noch keine ModsConfig.xml. Sie wird automatisch angelegt, sobald du Mods aktivierst.</p></div></div>` : ''}
+    ${!state.lib.configExists ? `<div class="callout">${icon('info')}<div class="grow"><b>${t('lib.neverStartedTitle')}</b><p>${t('lib.neverStartedText')}</p></div></div>` : ''}
     <div class="toolbar">
-      <div class="search-box">${icon('search')}<input class="input" id="libSearch" placeholder="Installierte Mods filtern …" value="${h(state.libQuery)}"></div>
-      <div class="segmented">${filters.map(([k, l, i]) => `<button class="${state.libFilter === k ? 'active' : ''}" data-action="libFilter" data-filter="${k}">${icon(i)}${l}</button>`).join('')}</div>
+      <div class="search-box">${icon('search')}<input class="input" id="libSearch" placeholder="${h(t('lib.filterPlaceholder'))}" value="${h(state.libQuery)}"></div>
+      <div class="segmented">${filters.map(([k, i]) => `<button class="${state.libFilter === k ? 'active' : ''}" data-action="libFilter" data-filter="${k}">${icon(i)}${t('lib.filter.' + k)}</button>`).join('')}</div>
       <span class="grow"></span>
       <div class="segmented">
-        <button class="${view === 'grid' ? 'active' : ''}" data-action="libView" data-mode="grid" title="Kacheln">${icon('layout-grid')}</button>
-        <button class="${view === 'list' ? 'active' : ''}" data-action="libView" data-mode="list" title="Liste">${icon('list')}</button>
+        <button class="${view === 'grid' ? 'active' : ''}" data-action="libView" data-mode="grid" title="${h(t('lib.viewGrid'))}">${icon('layout-grid')}</button>
+        <button class="${view === 'list' ? 'active' : ''}" data-action="libView" data-mode="list" title="${h(t('lib.viewList'))}">${icon('list')}</button>
       </div>
     </div>
     ${body}`;
@@ -389,8 +407,9 @@ afterRender.library = () => {
 
 function modSwitch(mod) {
   const locked = mod.packageId === 'ludeon.rimworld';
+  const title = locked ? t('lib.coreAlwaysActive') : mod.active ? t('common.deactivate') : t('common.activate');
   return `<button class="switch ${mod.active ? 'on' : ''}" data-action="toggleMod" data-pkg="${h(mod.packageId)}"
-    title="${locked ? 'Core ist immer aktiv' : mod.active ? 'Deaktivieren' : 'Aktivieren'}" ${locked ? 'disabled' : ''}></button>`;
+    title="${h(title)}" ${locked ? 'disabled' : ''}></button>`;
 }
 
 function libCard(mod) {
@@ -401,18 +420,18 @@ function libCard(mod) {
       <div class="card-img">
         ${mod.previewUrl ? `<img src="${h(mod.previewUrl)}" loading="lazy" alt="">` : `<div class="placeholder">${icon('package')}</div>`}
         <div class="card-flags">
-          <span>${mod.active ? `<span class="chip chip-ok">${icon('check')}Aktiv</span>` : ''}</span>
-          <span>${issueChip(issues)}${!mod.versionOk ? ` <span class="chip chip-warn" title="Nicht für ${h(vNow)} markiert">${icon('triangle-alert')}${h(mod.supportedVersions.slice(-1)[0] || '')}</span>` : ''}</span>
+          <span>${mod.active ? `<span class="chip chip-ok">${icon('check')}${t('common.active')}</span>` : ''}</span>
+          <span>${issueChip(issues)}${!mod.versionOk ? ` <span class="chip chip-warn" title="${h(t('common.notMarkedFor', { version: vNow }))}">${icon('triangle-alert')}${h(mod.supportedVersions.slice(-1)[0] || '')}</span>` : ''}</span>
         </div>
       </div>
       <div class="card-body">
         <div class="card-title">${h(mod.name)}</div>
-        <div class="card-sub">${mod.author ? 'von ' + h(mod.author) : h(mod.packageId)}</div>
+        <div class="card-sub">${mod.author ? h(by(mod.author)) : h(mod.packageId)}</div>
         <div class="card-meta">${mod.supportedVersions.slice(-3).map((v) => `<span class="chip ${v === vNow ? 'chip-accent' : ''}">${h(v)}</span>`).join('')}</div>
       </div>
       <div class="card-foot">
         ${modSwitch(mod)}
-        <span class="grow">${mod.active ? `Ladeposition ${mod.loadIndex + 1}` : 'Inaktiv'}</span>
+        <span class="grow">${mod.active ? h(t('lib.loadPosition', { n: mod.loadIndex + 1 })) : t('common.inactive')}</span>
         ${sourceChip(mod)}
       </div>
     </article>`;
@@ -455,12 +474,12 @@ function openModDrawer(mod) {
   const vNow = versionNow();
   const deps = mod.dependencies.map((d) => {
     const st = depStatus(d);
-    const label = { ok: 'Aktiv', inactive: 'Installiert, nicht aktiv', miss: 'Nicht installiert' }[st];
+    const label = { ok: t('mod.depActive'), inactive: t('mod.depInactive'), miss: t('mod.depMissing') }[st];
     const ic = { ok: 'circle-check-big', inactive: 'circle-alert', miss: 'circle-alert' }[st];
     let btn = '';
-    if (st === 'inactive') btn = `<button class="btn btn-sm" data-action="activatePkg" data-pkg="${h(d.packageId)}">${icon('plus')}Aktivieren</button>`;
+    if (st === 'inactive') btn = `<button class="btn btn-sm" data-action="activatePkg" data-pkg="${h(d.packageId)}">${icon('plus')}${t('common.activate')}</button>`;
     if (st === 'miss' && d.workshopId) btn = installButton({ id: d.workshopId }, { small: true });
-    if (st === 'miss' && !d.workshopId) btn = `<button class="btn btn-sm" data-action="searchWorkshop" data-q="${h(d.displayName)}">${icon('search')}Suchen</button>`;
+    if (st === 'miss' && !d.workshopId) btn = `<button class="btn btn-sm" data-action="searchWorkshop" data-q="${h(d.displayName)}">${icon('search')}${t('common.search')}</button>`;
     return `<div class="dep ${st}">${icon(ic)}<div class="grow"><b>${h(d.displayName)}</b><br><small class="card-sub">${label}</small></div>${btn}</div>`;
   }).join('');
 
@@ -471,48 +490,48 @@ function openModDrawer(mod) {
     </div>
     <div class="detail-body">
       <h2 class="detail-title">${h(mod.name)}</h2>
-      <div class="detail-author">${mod.author ? 'von ' + h(mod.author) : ''}</div>
+      <div class="detail-author">${mod.author ? h(by(mod.author)) : ''}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${sourceChip(mod)}
-        ${mod.active ? `<span class="chip chip-ok">${icon('check')}Aktiv · Position ${mod.loadIndex + 1}</span>` : `<span class="chip">${icon('ban')}Inaktiv</span>`}
+        ${mod.active ? `<span class="chip chip-ok">${icon('check')}${h(t('mod.activePosition', { n: mod.loadIndex + 1 }))}</span>` : `<span class="chip">${icon('ban')}${t('common.inactive')}</span>`}
         ${mod.supportedVersions.map((v) => `<span class="chip ${v === vNow ? 'chip-accent' : ''}">${h(v)}</span>`).join('')}
       </div>
       <div class="detail-actions">
         ${mod.packageId === 'ludeon.rimworld' ? '' : mod.active
-          ? `<button class="btn" data-action="toggleMod" data-pkg="${h(mod.packageId)}">${icon('ban')}Deaktivieren</button>`
-          : `<button class="btn btn-primary" data-action="toggleMod" data-pkg="${h(mod.packageId)}">${icon('circle-check-big')}Aktivieren</button>`}
-        <button class="btn" data-action="openPath" data-path="${h(mod.path)}">${icon('folder-open')}Ordner</button>
-        ${mod.workshopId ? `<button class="btn" data-action="openWorkshop" data-id="${mod.workshopId}">${icon('store')}Workshop-Details</button>` : ''}
-        ${mod.workshopId && !mod.official ? `<button class="btn" data-action="update" data-id="${mod.workshopId}" title="Neueste Version herunterladen">${icon('refresh-cw')}Neu laden</button>` : ''}
-        ${mod.official ? '' : `<button class="btn btn-danger" data-action="uninstall" data-key="${h(mod.key)}">${icon('trash-2')}Entfernen</button>`}
+          ? `<button class="btn" data-action="toggleMod" data-pkg="${h(mod.packageId)}">${icon('ban')}${t('common.deactivate')}</button>`
+          : `<button class="btn btn-primary" data-action="toggleMod" data-pkg="${h(mod.packageId)}">${icon('circle-check-big')}${t('common.activate')}</button>`}
+        <button class="btn" data-action="openPath" data-path="${h(mod.path)}">${icon('folder-open')}${t('mod.folder')}</button>
+        ${mod.workshopId ? `<button class="btn" data-action="openWorkshop" data-id="${mod.workshopId}">${icon('store')}${t('mod.workshopDetails')}</button>` : ''}
+        ${mod.workshopId && !mod.official ? `<button class="btn" data-action="update" data-id="${mod.workshopId}" title="${h(t('mod.redownloadTitle'))}">${icon('refresh-cw')}${t('mod.redownload')}</button>` : ''}
+        ${mod.official ? '' : `<button class="btn btn-danger" data-action="uninstall" data-key="${h(mod.key)}">${icon('trash-2')}${t('mod.remove')}</button>`}
       </div>
-      ${!mod.versionOk ? `<div class="callout warn">${icon('triangle-alert')}<div class="grow"><b>Nicht für RimWorld ${h(vNow)} markiert</b><p>Der Mod unterstützt laut About.xml: ${h(mod.supportedVersions.join(', '))}. Er kann trotzdem funktionieren.</p></div></div>` : ''}
-      ${issues.length ? `<div class="detail-section"><h4>${icon('triangle-alert')}Hinweise</h4><div class="dep-list">${issues.map(issueRow.bind(null, mod.packageId)).join('')}</div></div>` : ''}
-      ${mod.dependencies.length ? `<div class="detail-section"><h4>${icon('link')}Abhängigkeiten</h4><div class="dep-list">${deps}</div></div>` : ''}
-      <div class="detail-section"><h4>${icon('info')}Details</h4>
+      ${!mod.versionOk ? `<div class="callout warn">${icon('triangle-alert')}<div class="grow"><b>${h(t('mod.versionWarnTitle', { version: vNow }))}</b><p>${h(t('mod.versionWarnText', { versions: mod.supportedVersions.join(', ') }))}</p></div></div>` : ''}
+      ${issues.length ? `<div class="detail-section"><h4>${icon('triangle-alert')}${t('mod.hints')}</h4><div class="dep-list">${issues.map(issueRow).join('')}</div></div>` : ''}
+      ${mod.dependencies.length ? `<div class="detail-section"><h4>${icon('link')}${t('mod.dependencies')}</h4><div class="dep-list">${deps}</div></div>` : ''}
+      <div class="detail-section"><h4>${icon('info')}${t('mod.details')}</h4>
         <dl class="kv">
-          <dt>Package-ID</dt><dd><code>${h(mod.packageId)}</code></dd>
-          ${mod.modVersion ? `<dt>Mod-Version</dt><dd>${h(mod.modVersion)}</dd>` : ''}
-          ${mod.workshopId ? `<dt>Workshop-ID</dt><dd><code>${h(mod.workshopId)}</code></dd>` : ''}
-          <dt>Ordner</dt><dd><code>${h(mod.path)}</code></dd>
-          ${mod.url ? `<dt>Website</dt><dd><a href="${h(mod.url)}" target="_blank">${h(mod.url)}</a></dd>` : ''}
-          ${mod.loadAfter.length ? `<dt>Lädt nach</dt><dd>${h(mod.loadAfter.join(', '))}</dd>` : ''}
-          ${mod.loadBefore.length ? `<dt>Lädt vor</dt><dd>${h(mod.loadBefore.join(', '))}</dd>` : ''}
-          ${mod.incompatibleWith.length ? `<dt>Inkompatibel</dt><dd>${h(mod.incompatibleWith.join(', '))}</dd>` : ''}
+          <dt>${t('mod.packageId')}</dt><dd><code>${h(mod.packageId)}</code></dd>
+          ${mod.modVersion ? `<dt>${t('mod.modVersion')}</dt><dd>${h(mod.modVersion)}</dd>` : ''}
+          ${mod.workshopId ? `<dt>${t('mod.workshopId')}</dt><dd><code>${h(mod.workshopId)}</code></dd>` : ''}
+          <dt>${t('mod.folder')}</dt><dd><code>${h(mod.path)}</code></dd>
+          ${mod.url ? `<dt>${t('mod.website')}</dt><dd><a href="${h(mod.url)}" target="_blank">${h(mod.url)}</a></dd>` : ''}
+          ${mod.loadAfter.length ? `<dt>${t('mod.loadsAfter')}</dt><dd>${h(mod.loadAfter.join(', '))}</dd>` : ''}
+          ${mod.loadBefore.length ? `<dt>${t('mod.loadsBefore')}</dt><dd>${h(mod.loadBefore.join(', '))}</dd>` : ''}
+          ${mod.incompatibleWith.length ? `<dt>${t('mod.incompatible')}</dt><dd>${h(mod.incompatibleWith.join(', '))}</dd>` : ''}
         </dl>
       </div>
-      ${mod.description ? `<div class="detail-section"><h4>${icon('list')}Beschreibung</h4><div class="bb bb-plain">${h(mod.description)}</div></div>` : ''}
+      ${mod.description ? `<div class="detail-section"><h4>${icon('list')}${t('common.description')}</h4><div class="bb bb-plain">${h(mod.description)}</div></div>` : ''}
     </div>`);
 }
 
-function issueRow(pkg, issue) {
+function issueRow(issue) {
   const err = issue.level === 'error';
   let btn = '';
-  if (issue.fix?.type === 'activate') btn = `<button class="btn btn-sm" data-action="activatePkg" data-pkg="${h(issue.fix.packageId)}">${icon('plus')}Aktivieren</button>`;
+  if (issue.fix?.type === 'activate') btn = `<button class="btn btn-sm" data-action="activatePkg" data-pkg="${h(issue.fix.packageId)}">${icon('plus')}${t('common.activate')}</button>`;
   if (issue.fix?.type === 'install' && issue.fix.workshopId) btn = installButton({ id: issue.fix.workshopId }, { small: true });
-  if (issue.fix?.type === 'install' && !issue.fix.workshopId) btn = `<button class="btn btn-sm" data-action="searchWorkshop" data-q="${h(issue.fix.name)}">${icon('search')}Suchen</button>`;
-  if (issue.fix?.type === 'sort') btn = `<button class="btn btn-sm" data-action="autoSortNow">${icon('wand-sparkles')}Sortieren</button>`;
-  return `<div class="dep ${err ? 'miss' : 'inactive'}">${icon(err ? 'circle-alert' : 'triangle-alert')}<div class="grow">${h(issue.text)}</div>${btn}</div>`;
+  if (issue.fix?.type === 'install' && !issue.fix.workshopId) btn = `<button class="btn btn-sm" data-action="searchWorkshop" data-q="${h(issue.fix.name)}">${icon('search')}${t('common.search')}</button>`;
+  if (issue.fix?.type === 'sort') btn = `<button class="btn btn-sm" data-action="autoSortNow">${icon('wand-sparkles')}${t('common.sort')}</button>`;
+  return `<div class="dep ${err ? 'miss' : 'inactive'}">${icon(err ? 'circle-alert' : 'triangle-alert')}<div class="grow">${h(issueText(issue))}</div>${btn}</div>`;
 }
 
 // Aktivieren inkl. installierter, inaktiver Abhängigkeiten; Deaktivieren mit Rückfrage bei abhängigen Mods.
@@ -536,14 +555,14 @@ async function toggleMod(pkg, forceOn) {
     };
     visit(mod);
     active = [...active, ...add];
-    await saveActive(active, settings().autoSortOnInstall, add.length > 1 ? `${add.length} Mods aktiviert (inkl. Abhängigkeiten)` : `„${mod.name}“ aktiviert`);
+    await saveActive(active, settings().autoSortOnInstall, add.length > 1 ? t('toast.activatedMany', { n: add.length }) : t('toast.activated', { name: mod.name }));
     const installable = missing.filter((d) => d.workshopId);
     if (missing.length) {
       const ok = await confirmDialog({
-        title: 'Fehlende Abhängigkeiten',
-        text: `„${mod.name}“ benötigt Mods, die noch nicht installiert sind:`,
+        title: t('dlg.missingDepsTitle'),
+        text: t('dlg.missingDepsText', { name: mod.name }),
         list: missing.map((d) => d.displayName),
-        ok: installable.length ? 'Jetzt installieren' : 'OK',
+        ok: installable.length ? t('dlg.installNow') : t('common.ok'),
         iconName: 'link'
       });
       if (ok && installable.length) installWorkshop(installable.map((d) => d.workshopId));
@@ -552,15 +571,15 @@ async function toggleMod(pkg, forceOn) {
     const dependents = state.lib.mods.filter((m) => m.active && m.dependencies.some((d) => d.packageId === pkg));
     if (dependents.length) {
       const ok = await confirmDialog({
-        title: `„${mod.name}“ deaktivieren?`,
-        text: 'Diese aktiven Mods benötigen ihn und funktionieren ohne ihn nicht:',
+        title: t('dlg.deactivateTitle', { name: mod.name }),
+        text: t('dlg.deactivateText'),
         list: dependents.map((m) => m.name),
-        ok: 'Trotzdem deaktivieren',
+        ok: t('dlg.deactivateAnyway'),
         danger: true
       });
       if (!ok) return;
     }
-    await saveActive(active.filter((id) => id !== pkg), false, `„${mod.name}“ deaktiviert`);
+    await saveActive(active.filter((id) => id !== pkg), false, t('toast.deactivated', { name: mod.name }));
   }
 }
 
@@ -609,12 +628,12 @@ function viewLoadOrder() {
         <span class="grip">${icon('grip-vertical')}</span>
         <span class="idx">${i + 1}</span>
         ${modThumb(mod, 'lo-thumb')}
-        <span class="lo-name" data-action="${mod ? 'openMod' : ''}" data-key="${h(mod?.key || '')}">${h(mod?.name || pkg)}${mod?.official ? '<small>Offiziell</small>' : ''}${!mod ? '<small>nicht installiert</small>' : ''}</span>
-        ${iss.length ? `<span class="lo-issue ${err ? 'err' : ''}" title="${h(iss.map((x) => x.text).join('\n'))}">${icon(err ? 'circle-alert' : 'triangle-alert')}</span>` : ''}
+        <span class="lo-name" data-action="${mod ? 'openMod' : ''}" data-key="${h(mod?.key || '')}">${h(mod?.name || pkg)}${mod?.official ? `<small>${t('common.official')}</small>` : ''}${!mod ? `<small>${t('lo.notInstalled')}</small>` : ''}</span>
+        ${iss.length ? `<span class="lo-issue ${err ? 'err' : ''}" title="${h(iss.map(issueText).join('\n'))}">${icon(err ? 'circle-alert' : 'triangle-alert')}</span>` : ''}
         <span class="lo-actions">
-          <button class="btn btn-ghost btn-sm btn-icon" data-action="loMove" data-pkg="${h(pkg)}" data-dir="-1" title="Nach oben">${icon('arrow-up')}</button>
-          <button class="btn btn-ghost btn-sm btn-icon" data-action="loMove" data-pkg="${h(pkg)}" data-dir="1" title="Nach unten">${icon('arrow-down')}</button>
-          ${pkg === 'ludeon.rimworld' ? '' : `<button class="btn btn-ghost btn-sm btn-icon" data-action="loRemove" data-pkg="${h(pkg)}" title="Deaktivieren">${icon('minus')}</button>`}
+          <button class="btn btn-ghost btn-sm btn-icon" data-action="loMove" data-pkg="${h(pkg)}" data-dir="-1" title="${h(t('lo.moveUp'))}">${icon('arrow-up')}</button>
+          <button class="btn btn-ghost btn-sm btn-icon" data-action="loMove" data-pkg="${h(pkg)}" data-dir="1" title="${h(t('lo.moveDown'))}">${icon('arrow-down')}</button>
+          ${pkg === 'ludeon.rimworld' ? '' : `<button class="btn btn-ghost btn-sm btn-icon" data-action="loRemove" data-pkg="${h(pkg)}" title="${h(t('common.deactivate'))}">${icon('minus')}</button>`}
         </span>
       </div>`;
   }).join('');
@@ -623,48 +642,48 @@ function viewLoadOrder() {
     <div class="lo-item" draggable="true" data-pkg="${h(mod.packageId)}" data-list="inactive">
       ${modThumb(mod, 'lo-thumb')}
       <span class="lo-name" data-action="openMod" data-key="${h(mod.key)}">${h(mod.name)}</span>
-      ${!mod.versionOk ? `<span class="lo-issue" title="Nicht für ${h(versionNow())} markiert">${icon('triangle-alert')}</span>` : ''}
-      <button class="btn btn-ghost btn-sm btn-icon" data-action="loAdd" data-pkg="${h(mod.packageId)}" title="Aktivieren">${icon('plus')}</button>
+      ${!mod.versionOk ? `<span class="lo-issue" title="${h(t('common.notMarkedFor', { version: versionNow() }))}">${icon('triangle-alert')}</span>` : ''}
+      <button class="btn btn-ghost btn-sm btn-icon" data-action="loAdd" data-pkg="${h(mod.packageId)}" title="${h(t('common.activate'))}">${icon('plus')}</button>
     </div>`).join('');
 
   return `
     <div class="view-head">
-      <div><h1>${icon('list-ordered')}Ladereihenfolge</h1><p>Ziehe Mods per Drag &amp; Drop. Bibliotheken wie Harmony gehören nach oben.</p></div>
+      <div><h1>${icon('list-ordered')}${t('lo.title')}</h1><p>${h(t('lo.subtitle'))}</p></div>
       <div class="view-actions">
-        <button class="btn" data-action="loAutoSort">${icon('wand-sparkles')}Automatisch sortieren</button>
-        <button class="btn btn-primary" data-action="loSave" ${state.lo.dirty ? '' : 'disabled'}>${icon('save')}Speichern</button>
+        <button class="btn" data-action="loAutoSort">${icon('wand-sparkles')}${t('lo.autoSort')}</button>
+        <button class="btn btn-primary" data-action="loSave" ${state.lo.dirty ? '' : 'disabled'}>${icon('save')}${t('common.save')}</button>
       </div>
     </div>
     <div class="lo-wrap">
       <section class="panel">
-        <div class="panel-head"><h3>${icon('ban')}Inaktiv</h3><span class="count">${inactive.length}</span>
-          <div class="search-box">${icon('search')}<input class="input" id="loSearch" placeholder="Filtern …" value="${h(state.lo.query)}"></div></div>
-        <div class="panel-body" data-dropzone="inactive">${inactiveRows || '<div class="empty-mini">Alle installierten Mods sind aktiv.</div>'}</div>
+        <div class="panel-head"><h3>${icon('ban')}${t('common.inactive')}</h3><span class="count">${inactive.length}</span>
+          <div class="search-box">${icon('search')}<input class="input" id="loSearch" placeholder="${h(t('lo.filter'))}" value="${h(state.lo.query)}"></div></div>
+        <div class="panel-body" data-dropzone="inactive">${inactiveRows || `<div class="empty-mini">${t('lo.allActive')}</div>`}</div>
       </section>
       <section class="panel">
-        <div class="panel-head"><h3>${icon('circle-check-big')}Aktiv</h3><span class="count">${state.lo.active.length} Mods · von oben nach unten geladen</span></div>
+        <div class="panel-head"><h3>${icon('circle-check-big')}${t('common.active')}</h3><span class="count">${h(t('lo.activeCount', { n: state.lo.active.length }))}</span></div>
         <div class="panel-body" data-dropzone="active">${activeRows}</div>
       </section>
     </div>
     <section class="panel issues">
-      <div class="panel-head"><h3>${icon(allIssues.length ? 'triangle-alert' : 'shield-alert')}${allIssues.length ? `${allIssues.length} ${allIssues.length === 1 ? 'Hinweis' : 'Hinweise'}` : 'Keine Probleme gefunden'}</h3></div>
+      <div class="panel-head"><h3>${icon(allIssues.length ? 'triangle-alert' : 'shield-alert')}${allIssues.length ? h(t('lo.issues', { n: allIssues.length })) : t('lo.noIssues')}</h3></div>
       ${allIssues.map((i) => {
         const mod = modByPkg(i.pkg);
         return `<div class="issue ${i.level === 'error' ? 'err' : ''}">${icon(i.level === 'error' ? 'circle-alert' : 'triangle-alert')}
-          <div class="issue-text"><b>${h(mod?.name || i.pkg)}</b>: ${h(i.text)}</div>${issueFixButton(i)}</div>`;
+          <div class="issue-text"><b>${h(mod?.name || i.pkg)}</b>: ${h(issueText(i))}</div>${issueFixButton(i)}</div>`;
       }).join('')}
     </section>
     ${state.lo.dirty ? `
-      <div class="dirty-bar"><span class="grow">${icon('triangle-alert')}Ungespeicherte Änderungen an der Ladereihenfolge</span>
-        <button class="btn" data-action="loDiscard">${icon('undo-2')}Verwerfen</button>
-        <button class="btn btn-primary" data-action="loSave">${icon('save')}Speichern</button></div>` : ''}`;
+      <div class="dirty-bar"><span class="grow">${icon('triangle-alert')}${t('lo.unsaved')}</span>
+        <button class="btn" data-action="loDiscard">${icon('undo-2')}${t('common.discard')}</button>
+        <button class="btn btn-primary" data-action="loSave">${icon('save')}${t('common.save')}</button></div>` : ''}`;
 }
 
 function issueFixButton(i) {
-  if (i.fix?.type === 'activate') return `<button class="btn btn-sm" data-action="loAdd" data-pkg="${h(i.fix.packageId)}" data-before="${h(i.pkg)}">${icon('plus')}Aktivieren</button>`;
+  if (i.fix?.type === 'activate') return `<button class="btn btn-sm" data-action="loAdd" data-pkg="${h(i.fix.packageId)}" data-before="${h(i.pkg)}">${icon('plus')}${t('common.activate')}</button>`;
   if (i.fix?.type === 'install' && i.fix.workshopId) return installButton({ id: i.fix.workshopId }, { small: true });
-  if (i.fix?.type === 'install') return `<button class="btn btn-sm" data-action="searchWorkshop" data-q="${h(i.fix.name)}">${icon('search')}Suchen</button>`;
-  if (i.fix?.type === 'sort') return `<button class="btn btn-sm" data-action="loAutoSort">${icon('wand-sparkles')}Sortieren</button>`;
+  if (i.fix?.type === 'install') return `<button class="btn btn-sm" data-action="searchWorkshop" data-q="${h(i.fix.name)}">${icon('search')}${t('common.search')}</button>`;
+  if (i.fix?.type === 'sort') return `<button class="btn btn-sm" data-action="loAutoSort">${icon('wand-sparkles')}${t('common.sort')}</button>`;
   return '';
 }
 
@@ -746,36 +765,38 @@ afterRender.loadorder = () => {
 // ====================================================================
 function viewWorkshop() {
   const ws = state.ws;
-  const sorts = [['trend', 'Im Trend', 'trending-up'], ['popular', 'Beliebteste', 'crown'], ['recent', 'Neueste', 'sparkles'], ['updated', 'Aktualisiert', 'refresh-cw']];
-  if (ws.query) sorts.unshift(['relevance', 'Relevanz', 'search']);
-  const types = [['', 'Alle'], ['Mod', 'Mods'], ['Translation', 'Übersetzungen'], ['Scenario', 'Szenarien']];
+  const sorts = [['trend', 'trending-up'], ['popular', 'crown'], ['recent', 'sparkles'], ['updated', 'refresh-cw']];
+  if (ws.query) sorts.unshift(['relevance', 'search']);
+  const types = [['', 'all'], ['Mod', 'mods'], ['Translation', 'translations'], ['Scenario', 'scenarios']];
   const v = versionNow();
   let body;
   if (ws.error) {
-    body = `<div class="empty">${icon('circle-alert')}<h3>Workshop nicht erreichbar</h3><p>${h(ws.error)}</p>
-      <button class="btn" data-action="wsSearch">${icon('rotate-ccw')}Erneut versuchen</button></div>`;
+    body = `<div class="empty">${icon('circle-alert')}<h3>${t('ws.errorTitle')}</h3><p>${h(ws.error)}</p>
+      <button class="btn" data-action="wsSearch">${icon('rotate-ccw')}${t('ws.tryAgain')}</button></div>`;
   } else if (ws.loading && !ws.items.length) {
     body = `<div class="grid">${skeletonCards(12)}</div>`;
   } else if (!ws.items.length) {
-    body = `<div class="empty">${icon('search')}<h3>Nichts gefunden</h3><p>Versuche andere Suchbegriffe oder Filter.</p></div>`;
+    body = `<div class="empty">${icon('search')}<h3>${t('ws.nothingFound')}</h3><p>${t('ws.nothingFoundText')}</p></div>`;
   } else {
     body = `<div class="grid">${ws.items.map(workshopCard).join('')}${ws.loading ? skeletonCards(4) : ''}</div>
-      ${ws.page < ws.totalPages && !ws.loading ? `<div class="load-more"><button class="btn" data-action="wsMore">${icon('plus')}Mehr laden</button></div>` : ''}`;
+      ${ws.page < ws.totalPages && !ws.loading ? `<div class="load-more"><button class="btn" data-action="wsMore">${icon('plus')}${t('ws.loadMore')}</button></div>` : ''}`;
   }
+  const subtitle = (ws.total ? t('ws.results', { n: fmtInt(ws.total) }) : t('ws.subtitle'))
+    + (settings().versionFilter && v ? t('ws.forVersion', { version: v }) : '');
   return `
     <div class="view-head">
-      <div><h1>${icon('compass')}Steam Workshop</h1><p>${ws.total ? `${ws.total.toLocaleString('de-DE')} Ergebnisse` : 'Mods direkt aus dem RimWorld-Workshop'}${settings().versionFilter && v ? ` für Version ${h(v)}` : ''}</p></div>
+      <div><h1>${icon('compass')}Steam Workshop</h1><p>${h(subtitle)}</p></div>
     </div>
     <div class="toolbar">
-      <div class="search-box large" style="flex:1">${icon('search')}<input class="input" id="wsQuery" placeholder="Nach Mods suchen, z. B. „Vanilla Expanded“, „Hospitality“, „Combat Extended“ …" value="${h(ws.query)}"></div>
-      <button class="btn btn-primary" style="height:44px" data-action="wsSearch">${icon('search')}Suchen</button>
+      <div class="search-box large" style="flex:1">${icon('search')}<input class="input" id="wsQuery" placeholder="${h(t('ws.placeholder'))}" value="${h(ws.query)}"></div>
+      <button class="btn btn-primary" style="height:44px" data-action="wsSearch">${icon('search')}${t('common.search')}</button>
     </div>
     <div class="toolbar">
-      <div class="segmented">${sorts.map(([k, l, i]) => `<button class="${ws.sort === k ? 'active' : ''}" data-action="wsSort" data-sort="${k}">${icon(i)}${l}</button>`).join('')}</div>
-      ${ws.sort === 'trend' ? `<select class="select" id="wsDays">${[[1, 'Heute'], [7, 'Diese Woche'], [30, 'Diesen Monat'], [90, '3 Monate'], [365, 'Dieses Jahr']].map(([d, l]) => `<option value="${d}" ${ws.days === d ? 'selected' : ''}>${l}</option>`).join('')}</select>` : ''}
+      <div class="segmented">${sorts.map(([k, i]) => `<button class="${ws.sort === k ? 'active' : ''}" data-action="wsSort" data-sort="${k}">${icon(i)}${t('ws.sort.' + k)}</button>`).join('')}</div>
+      ${ws.sort === 'trend' ? `<select class="select" id="wsDays">${[1, 7, 30, 90, 365].map((d) => `<option value="${d}" ${ws.days === d ? 'selected' : ''}>${t('ws.days.' + d)}</option>`).join('')}</select>` : ''}
       <span class="grow"></span>
-      ${types.map(([t, l]) => `<button class="chip-btn ${ws.tag === t ? 'active' : ''}" data-action="wsTag" data-tag="${t}">${l}</button>`).join('')}
-      ${v ? `<button class="chip-btn ${settings().versionFilter ? 'active' : ''}" data-action="wsVersion" title="Nur Mods für deine Spielversion">${icon('filter')} Nur ${h(v)}</button>` : ''}
+      ${types.map(([tag, key]) => `<button class="chip-btn ${ws.tag === tag ? 'active' : ''}" data-action="wsTag" data-tag="${tag}">${t('ws.type.' + key)}</button>`).join('')}
+      ${v ? `<button class="chip-btn ${settings().versionFilter ? 'active' : ''}" data-action="wsVersion" title="${h(t('ws.onlyVersionTitle'))}">${icon('filter')} ${h(t('ws.onlyVersion', { version: v }))}</button>` : ''}
     </div>
     ${body}`;
 }
@@ -836,7 +857,7 @@ async function openWorkshopModal(id) {
   state.openWorkshopId = id;
   const modal = $('#modal');
   modal.className = 'modal';
-  modal.innerHTML = workshopDetailHtml(base || { id, title: 'Wird geladen …', versions: [], tags: [] }, true);
+  modal.innerHTML = workshopDetailHtml(base || { id, title: t('wd.loading'), versions: [], tags: [] }, true);
   openModal();
   refreshIcons();
   const full = await safe(() => window.api.details(id));
@@ -855,8 +876,9 @@ function workshopDetailHtml(item, loading) {
   const deps = (item.required || []).map((d) => {
     const inst = state.installedWs.get(d.id);
     const st = !inst ? 'miss' : inst.active ? 'ok' : 'inactive';
+    const label = inst ? (inst.active ? t('wd.installedActive') : t('wd.installedInactive')) : t('wd.autoInstalled');
     return `<div class="dep ${st}">${icon(st === 'ok' ? 'circle-check-big' : 'circle-alert')}
-      <div class="grow"><b>${h(d.name)}</b><br><small class="card-sub">${inst ? (inst.active ? 'Installiert & aktiv' : 'Installiert, nicht aktiv') : 'Wird automatisch mitinstalliert'}</small></div>
+      <div class="grow"><b>${h(d.name)}</b><br><small class="card-sub">${label}</small></div>
       <button class="btn btn-sm btn-ghost" data-action="openWorkshop" data-id="${d.id}">${icon('chevron-right')}</button></div>`;
   }).join('');
   const missingDeps = (item.required || []).filter((d) => !state.installedWs.has(d.id)).length;
@@ -868,32 +890,32 @@ function workshopDetailHtml(item, loading) {
     </div>
     <div class="detail-body">
       <h2 class="detail-title">${h(item.title)}</h2>
-      <div class="detail-author">${item.author ? 'von ' + h(item.author) : '&nbsp;'}</div>
+      <div class="detail-author">${item.author ? h(by(item.author)) : '&nbsp;'}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${installedMod ? `<span class="chip chip-ok">${icon('check')}Installiert${installedMod.active ? ' & aktiv' : ''}</span>` : ''}
+        ${installedMod ? `<span class="chip chip-ok">${icon('check')}${installedMod.active ? t('wd.installedChipActive') : t('wd.installedChip')}</span>` : ''}
         ${(item.versions || []).map((x) => `<span class="chip ${x === v ? 'chip-accent' : ''}">${h(x)}</span>`).join('')}
-        ${(item.tags || []).map((t) => `<span class="chip">${icon('tag')}${h(t)}</span>`).join('')}
+        ${(item.tags || []).map((tag) => `<span class="chip">${icon('tag')}${h(tag)}</span>`).join('')}
       </div>
       <div class="detail-actions">
         ${installButton(item)}
-        ${missingDeps && !installedMod ? `<span class="chip chip-accent" style="height:34px">${icon('link')}+ ${missingDeps} Abhängigkeit${missingDeps > 1 ? 'en' : ''}</span>` : ''}
-        ${installedMod ? `<button class="btn" data-action="showInstalled" data-id="${item.id}">${icon('library')}In Bibliothek</button>` : ''}
-        <button class="btn" data-action="openUrl" data-url="https://steamcommunity.com/sharedfiles/filedetails/?id=${item.id}">${icon('external-link')}Steam-Seite</button>
+        ${missingDeps && !installedMod ? `<span class="chip chip-accent" style="height:34px">${icon('link')}${h(t('wd.plusDeps', { n: missingDeps }))}</span>` : ''}
+        ${installedMod ? `<button class="btn" data-action="showInstalled" data-id="${item.id}">${icon('library')}${t('wd.inLibrary')}</button>` : ''}
+        <button class="btn" data-action="openUrl" data-url="https://steamcommunity.com/sharedfiles/filedetails/?id=${item.id}">${icon('external-link')}${t('wd.steamPage')}</button>
       </div>
-      ${!fits ? `<div class="callout warn">${icon('triangle-alert')}<div class="grow"><b>Nicht für RimWorld ${h(v)} markiert</b><p>Unterstützte Versionen: ${h(item.versions.join(', '))}. Der Mod funktioniert evtl. nicht.</p></div></div>` : ''}
-      ${item.requiredDlc?.length ? `<div class="callout warn">${icon('shield-alert')}<div class="grow"><b>Benötigt DLC: ${h(item.requiredDlc.join(', '))}</b><p>Stelle sicher, dass du diese Erweiterung(en) auch in deiner Epic-Version besitzt.</p></div></div>` : ''}
+      ${!fits ? `<div class="callout warn">${icon('triangle-alert')}<div class="grow"><b>${h(t('mod.versionWarnTitle', { version: v }))}</b><p>${h(t('wd.versionWarnText', { versions: item.versions.join(', ') }))}</p></div></div>` : ''}
+      ${item.requiredDlc?.length ? `<div class="callout warn">${icon('shield-alert')}<div class="grow"><b>${h(t('wd.dlcTitle', { dlc: item.requiredDlc.join(', ') }))}</b><p>${t('wd.dlcText')}</p></div></div>` : ''}
       <div class="detail-stats">
-        <div class="detail-stat"><small>${icon('users')}Abonnenten</small><b>${fmtNum(item.subscriptions)}</b></div>
-        <div class="detail-stat"><small>${icon('heart')}Favoriten</small><b>${fmtNum(item.favorited)}</b></div>
-        <div class="detail-stat"><small>${icon('star')}Bewertung</small><b>${starsHtml(item.stars ?? -1) || '–'}</b></div>
-        <div class="detail-stat"><small>${icon('hard-drive')}Größe</small><b>${fmtSize(item.size)}</b></div>
-        <div class="detail-stat"><small>${icon('calendar')}Erstellt</small><b>${fmtDate(item.timeCreated)}</b></div>
-        <div class="detail-stat"><small>${icon('clock')}Aktualisiert</small><b>${fmtDate(item.timeUpdated)}</b></div>
+        <div class="detail-stat"><small>${icon('users')}${t('common.subscribers')}</small><b>${fmtNum(item.subscriptions)}</b></div>
+        <div class="detail-stat"><small>${icon('heart')}${t('wd.favorites')}</small><b>${fmtNum(item.favorited)}</b></div>
+        <div class="detail-stat"><small>${icon('star')}${t('wd.rating')}</small><b>${starsHtml(item.stars ?? -1) || '–'}</b></div>
+        <div class="detail-stat"><small>${icon('hard-drive')}${t('wd.size')}</small><b>${fmtSize(item.size)}</b></div>
+        <div class="detail-stat"><small>${icon('calendar')}${t('wd.created')}</small><b>${fmtDate(item.timeCreated)}</b></div>
+        <div class="detail-stat"><small>${icon('clock')}${t('wd.updated')}</small><b>${fmtDate(item.timeUpdated)}</b></div>
       </div>
-      ${loading ? `<div class="empty-mini">${icon('loader-circle', 'spin')} Details werden geladen …</div>` : ''}
-      ${deps ? `<div class="detail-section"><h4>${icon('link')}Benötigte Mods</h4><div class="dep-list">${deps}</div></div>` : ''}
-      ${item.screenshots?.length ? `<div class="detail-section"><h4>${icon('image-off', '')}Screenshots</h4><div class="shots">${item.screenshots.map((s) => `<img src="${h(s)}?imw=400" data-action="zoom" data-src="${h(s)}" loading="lazy" alt="">`).join('')}</div></div>` : ''}
-      ${item.description ? `<div class="detail-section"><h4>${icon('list')}Beschreibung</h4><div class="bb">${bbcode(item.description)}</div></div>` : ''}
+      ${loading ? `<div class="empty-mini">${icon('loader-circle', 'spin')} ${t('wd.loadingDetails')}</div>` : ''}
+      ${deps ? `<div class="detail-section"><h4>${icon('link')}${t('wd.requiredMods')}</h4><div class="dep-list">${deps}</div></div>` : ''}
+      ${item.screenshots?.length ? `<div class="detail-section"><h4>${icon('image-off', '')}${t('wd.screenshots')}</h4><div class="shots">${item.screenshots.map((s) => `<img src="${h(s)}?imw=400" data-action="zoom" data-src="${h(s)}" loading="lazy" alt="">`).join('')}</div></div>` : ''}
+      ${item.description ? `<div class="detail-section"><h4>${icon('list')}${t('common.description')}</h4><div class="bb">${bbcode(item.description)}</div></div>` : ''}
     </div>`;
 }
 
@@ -904,38 +926,38 @@ function viewSuggestions() {
   const s = state.suggestions;
   if (!s) {
     return `
-      <div class="view-head"><div><h1>${icon('sparkles')}Vorschläge</h1><p>Empfehlungen passend zu deiner Installation</p></div></div>
-      <div class="section"><div class="section-head"><h2>${icon('crown')}Bewährte Grundausstattung</h2></div><div class="grid">${skeletonCards(8)}</div></div>`;
+      <div class="view-head"><div><h1>${icon('sparkles')}${t('sg.title')}</h1><p>${t('sg.subtitle')}</p></div></div>
+      <div class="section"><div class="section-head"><h2>${icon('crown')}${t('sg.essentials')}</h2></div><div class="grid">${skeletonCards(8)}</div></div>`;
   }
   const missing = s.missing.filter((m) => !state.installedWs.has(m.workshopId));
   const fresh = (list) => list.filter((i) => !state.installedWs.has(i.id));
-  const section = (title, sub, ic, list) => list.length ? `
+  const section = (key, ic, list) => list.length ? `
     <section class="section">
-      <div class="section-head"><h2>${icon(ic)}${title}</h2><p>${sub}</p></div>
+      <div class="section-head"><h2>${icon(ic)}${t('sg.' + key)}</h2><p>${t('sg.' + key + 'Sub')}</p></div>
       <div class="grid">${list.map(workshopCard).join('')}</div>
     </section>` : '';
   return `
     <div class="view-head">
-      <div><h1>${icon('sparkles')}Vorschläge</h1><p>Empfehlungen passend zu deiner Installation (RimWorld ${h(versionNow())})</p></div>
-      <div class="view-actions"><button class="btn" data-action="reloadSuggestions" ${state.suggestionsLoading ? 'disabled' : ''}>${icon('rotate-ccw', state.suggestionsLoading ? 'spin' : '')}Aktualisieren</button></div>
+      <div><h1>${icon('sparkles')}${t('sg.title')}</h1><p>${h(t('sg.subtitleVersion', { version: versionNow() }))}</p></div>
+      <div class="view-actions"><button class="btn" data-action="reloadSuggestions" ${state.suggestionsLoading ? 'disabled' : ''}>${icon('rotate-ccw', state.suggestionsLoading ? 'spin' : '')}${t('common.refresh')}</button></div>
     </div>
     ${missing.length ? `
       <section class="section">
-        <div class="callout err">${icon('link')}<div class="grow"><b>${missing.length} fehlende Abhängigkeit${missing.length > 1 ? 'en' : ''}</b>
-          <p>Diese Mods werden von deinen installierten Mods benötigt.</p></div>
-          ${missing.some((m) => m.workshopId) ? `<button class="btn btn-primary" data-action="installMissing">${icon('download')}Alle installieren</button>` : ''}
+        <div class="callout err">${icon('link')}<div class="grow"><b>${h(t('sg.missing', { n: missing.length }))}</b>
+          <p>${t('sg.missingText')}</p></div>
+          ${missing.some((m) => m.workshopId) ? `<button class="btn btn-primary" data-action="installMissing">${icon('download')}${t('sg.installAll')}</button>` : ''}
         </div>
         <div class="list">${missing.map((m) => `
           <div class="row" ${m.workshopId ? `data-action="openWorkshop" data-id="${m.workshopId}"` : ''}>
             <div class="row-thumb">${m.item?.preview ? `<img src="${h(m.item.preview)}" alt="">` : icon('package')}</div>
             <div class="row-main"><div class="row-title">${h(m.item?.title || m.displayName)}</div>
-            <div class="row-sub">Benötigt von: ${h(m.requiredBy.join(', '))}</div></div>
-            ${m.workshopId ? installButton({ id: m.workshopId }, { small: true }) : `<button class="btn btn-sm" data-action="searchWorkshop" data-q="${h(m.displayName)}">${icon('search')}Suchen</button>`}
+            <div class="row-sub">${h(t('sg.requiredBy', { names: m.requiredBy.join(', ') }))}</div></div>
+            ${m.workshopId ? installButton({ id: m.workshopId }, { small: true }) : `<button class="btn btn-sm" data-action="searchWorkshop" data-q="${h(m.displayName)}">${icon('search')}${t('common.search')}</button>`}
           </div>`).join('')}</div>
       </section>` : ''}
-    ${section('Bewährte Grundausstattung', 'Beliebte Qualitäts-Mods, die fast jeder nutzt', 'crown', fresh(s.essentials))}
-    ${section('Im Trend diese Woche', 'Was die Community gerade abonniert', 'flame', fresh(s.trending))}
-    ${section('Beliebteste aller Zeiten', 'Die meistabonnierten Mods für deine Version', 'trending-up', fresh(s.popular))}`;
+    ${section('essentials', 'crown', fresh(s.essentials))}
+    ${section('trending', 'flame', fresh(s.trending))}
+    ${section('popular', 'trending-up', fresh(s.popular))}`;
 }
 afterRender.suggestions = () => {
   if (!state.suggestions && !state.suggestionsLoading) loadSuggestions();
@@ -956,28 +978,28 @@ function viewUpdates() {
   const list = state.updates || [];
   let body;
   if (state.updatesLoading && !state.updates) {
-    body = `<div class="empty">${icon('loader-circle', 'spin')}<p>Suche nach Updates …</p></div>`;
+    body = `<div class="empty">${icon('loader-circle', 'spin')}<p>${t('up.searching')}</p></div>`;
   } else if (!list.length) {
-    body = `<div class="empty">${icon('circle-check-big')}<h3>Alles aktuell</h3><p>Alle Workshop-Mods sind auf dem neuesten Stand.</p></div>`;
+    body = `<div class="empty">${icon('circle-check-big')}<h3>${t('up.allCurrent')}</h3><p>${t('up.allCurrentText')}</p></div>`;
   } else {
     body = `<div class="list">${list.map((u) => `
       <div class="row" data-action="openWorkshop" data-id="${u.id}">
         <div class="row-thumb">${u.preview ? `<img src="${h(u.preview)}" alt="">` : icon('package')}</div>
         <div class="row-main"><div class="row-title">${h(u.localName || u.title)}</div>
-          <div class="row-sub">Installiert: ${fmtDate(u.localTime)} → Workshop: ${fmtDate(u.timeUpdated)} · ${fmtSize(u.size)}</div></div>
+          <div class="row-sub">${h(t('up.row', { local: fmtDate(u.localTime), remote: fmtDate(u.timeUpdated), size: fmtSize(u.size) }))}</div></div>
         ${installButton(u, { small: true })}
       </div>`).join('')}</div>`;
   }
   return `
     <div class="view-head">
-      <div><h1>${icon('refresh-cw')}Updates</h1><p>Vergleicht deine Workshop-Mods mit der aktuellen Version im Steam Workshop</p></div>
+      <div><h1>${icon('refresh-cw')}${t('nav.updates')}</h1><p>${t('up.subtitle')}</p></div>
       <div class="view-actions">
-        <button class="btn" data-action="checkUpdates" ${state.updatesLoading ? 'disabled' : ''}>${icon('rotate-ccw', state.updatesLoading ? 'spin' : '')}Erneut prüfen</button>
-        ${list.length ? `<button class="btn btn-primary" data-action="updateAll">${icon('download')}Alle aktualisieren (${list.length})</button>` : ''}
+        <button class="btn" data-action="checkUpdates" ${state.updatesLoading ? 'disabled' : ''}>${icon('rotate-ccw', state.updatesLoading ? 'spin' : '')}${t('up.checkAgain')}</button>
+        ${list.length ? `<button class="btn btn-primary" data-action="updateAll">${icon('download')}${h(t('up.updateAll', { n: list.length }))}</button>` : ''}
       </div>
     </div>
     ${body}
-    <p class="card-sub" style="margin-top:16px">Hinweis: Bei Mods, die nicht über diese App installiert wurden, wird das Ordnerdatum zum Vergleich verwendet.</p>`;
+    <p class="card-sub" style="margin-top:16px">${t('up.note')}</p>`;
 }
 
 // ====================================================================
@@ -987,7 +1009,7 @@ function viewCollections() {
   const c = state.collection;
   let body = '';
   if (state.collLoading) {
-    body = `<div class="empty">${icon('loader-circle', 'spin')}<p>Collection wird geladen …</p></div>`;
+    body = `<div class="empty">${icon('loader-circle', 'spin')}<p>${t('co.loading')}</p></div>`;
   } else if (c) {
     const v = versionNow();
     const installed = c.items.filter((i) => state.installedWs.has(i.id)).length;
@@ -997,10 +1019,10 @@ function viewCollections() {
       <section class="panel">
         <div class="coll-head">
           ${c.preview ? `<img src="${h(c.preview)}" alt="">` : ''}
-          <div class="grow"><h3>${h(c.title)}</h3><span class="card-sub">${c.items.length} Mods · ${installed} bereits installiert</span></div>
-          <button class="btn" data-action="collSelect" data-all="1">${icon('square-check')}Alle</button>
-          <button class="btn" data-action="collSelect" data-all="0">${icon('square')}Keine</button>
-          <button class="btn btn-primary" data-action="collInstall" ${selected.length ? '' : 'disabled'}>${icon('download')}${selected.length} installieren</button>
+          <div class="grow"><h3>${h(c.title)}</h3><span class="card-sub">${h(t('co.summary', { n: c.items.length, installed }))}</span></div>
+          <button class="btn" data-action="collSelect" data-all="1">${icon('square-check')}${t('co.all')}</button>
+          <button class="btn" data-action="collSelect" data-all="0">${icon('square')}${t('co.none')}</button>
+          <button class="btn btn-primary" data-action="collInstall" ${selected.length ? '' : 'disabled'}>${icon('download')}${h(t('co.installN', { n: selected.length }))}</button>
         </div>
         ${c.items.map((i) => {
           const inst = state.installedWs.has(i.id);
@@ -1009,23 +1031,23 @@ function viewCollections() {
           <div class="row" data-action="openWorkshop" data-id="${i.id}">
             <input type="checkbox" data-action="collToggle" data-id="${i.id}" ${inst ? 'checked disabled' : state.collSelected.has(i.id) ? 'checked' : ''}>
             <div class="row-thumb">${i.preview ? `<img src="${h(i.preview)}" loading="lazy" alt="">` : icon('package')}</div>
-            <div class="row-main"><div class="row-title">${h(i.title)}</div><div class="row-sub">${fmtNum(i.subscriptions)} Abonnenten · ${fmtSize(i.size)}</div></div>
+            <div class="row-main"><div class="row-title">${h(i.title)}</div><div class="row-sub">${h(t('co.subs', { n: fmtNum(i.subscriptions), size: fmtSize(i.size) }))}</div></div>
             <div class="row-chips">
-              ${inst ? `<span class="chip chip-ok">${icon('check')}Installiert</span>` : ''}
+              ${inst ? `<span class="chip chip-ok">${icon('check')}${t('common.installed')}</span>` : ''}
               ${!fits ? `<span class="chip chip-warn" title="${h(i.versions.join(', '))}">${icon('triangle-alert')}${h(i.versions[0] || '?')}</span>` : `<span class="chip chip-accent">${h(v)}</span>`}
             </div>
           </div>`;
         }).join('')}
       </section>`;
   } else {
-    body = `<div class="empty">${icon('layers')}<h3>Collection importieren</h3>
-      <p>Füge den Link einer Steam-Workshop-Collection ein, z. B. ein Modpack eines Streamers. Alle enthaltenen Mods kannst du mit einem Klick installieren.</p></div>`;
+    body = `<div class="empty">${icon('layers')}<h3>${t('co.emptyTitle')}</h3>
+      <p>${t('co.emptyText')}</p></div>`;
   }
   return `
-    <div class="view-head"><div><h1>${icon('layers')}Collections</h1><p>Ganze Modpacks aus dem Steam Workshop übernehmen</p></div></div>
+    <div class="view-head"><div><h1>${icon('layers')}${t('nav.collections')}</h1><p>${t('co.subtitle')}</p></div></div>
     <div class="toolbar">
       <div class="search-box large" style="flex:1">${icon('link')}<input class="input" id="collInput" placeholder="https://steamcommunity.com/sharedfiles/filedetails/?id=…" value="${h(state.collInput)}"></div>
-      <button class="btn btn-primary" style="height:44px" data-action="collLoad">${icon('layers')}Laden</button>
+      <button class="btn btn-primary" style="height:44px" data-action="collLoad">${icon('layers')}${t('co.load')}</button>
     </div>
     ${body}`;
 }
@@ -1052,37 +1074,39 @@ async function loadCollection() {
 // ====================================================================
 function viewDownloads() {
   const q = state.queue;
-  const labels = { queued: 'Wartet', downloading: 'Wird heruntergeladen', installing: 'Wird installiert', done: 'Fertig', error: 'Fehler' };
-  const finished = q.some((t) => t.state === 'done' || t.state === 'error');
-  const busy = q.some((t) => ['queued', 'downloading', 'installing'].includes(t.state));
+  const finished = q.some((x) => x.state === 'done' || x.state === 'error');
+  const busy = q.some((x) => ['queued', 'downloading', 'installing'].includes(x.state));
   return `
     <div class="view-head">
-      <div><h1>${icon('download')}Downloads</h1><p>Mods werden über SteamCMD (offizielles Valve-Tool) aus dem Workshop geladen</p></div>
+      <div><h1>${icon('download')}${t('nav.downloads')}</h1><p>${t('dl.subtitle')}</p></div>
       <div class="view-actions">
-        ${finished ? `<button class="btn" data-action="queueClear">${icon('check')}Erledigte entfernen</button>` : ''}
-        ${busy ? `<button class="btn btn-danger" data-action="queueCancel">${icon('x')}Abbrechen</button>` : ''}
+        ${finished ? `<button class="btn" data-action="queueClear">${icon('check')}${t('dl.clearDone')}</button>` : ''}
+        ${busy ? `<button class="btn btn-danger" data-action="queueCancel">${icon('x')}${t('dl.cancel')}</button>` : ''}
       </div>
     </div>
-    ${state.status ? `<div class="callout">${icon('loader-circle', 'spin')}<div class="grow"><b>${h(state.status)}</b><p>Beim ersten Download wird SteamCMD einmalig eingerichtet.</p></div></div>` : ''}
-    ${q.length ? `<section class="panel">${q.map((t) => {
-      const pct = Math.round((t.progress || 0) * 100);
-      const indet = t.state === 'downloading' && !t.progress || t.state === 'installing';
+    ${state.status ? `<div class="callout">${icon('loader-circle', 'spin')}<div class="grow"><b>${h(state.status)}</b><p>${t('dl.firstSetup')}</p></div></div>` : ''}
+    ${q.length ? `<section class="panel">${q.map((task) => {
+      const pct = Math.round((task.progress || 0) * 100);
+      const indet = task.state === 'downloading' && !task.progress || task.state === 'installing';
+      const detail = task.state === 'downloading' && task.progress
+        ? ` · ${t('dl.progress', { pct, size: fmtSize(task.size) })}`
+        : task.size ? ` · ${fmtSize(task.size)}` : '';
       return `
         <div class="dl-item">
-          <div class="dl-thumb">${t.preview ? `<img src="${h(t.preview)}" alt="">` : ''}</div>
+          <div class="dl-thumb">${task.preview ? `<img src="${h(task.preview)}" alt="">` : ''}</div>
           <div class="dl-main">
-            <div class="dl-title">${h(t.title)}
-              ${t.isDependency ? `<span class="chip">${icon('link')}Abhängigkeit</span>` : ''}
-              ${t.isUpdate ? `<span class="chip chip-accent">${icon('refresh-cw')}Update</span>` : ''}
+            <div class="dl-title">${h(task.title)}
+              ${task.isDependency ? `<span class="chip">${icon('link')}${t('dl.dependency')}</span>` : ''}
+              ${task.isUpdate ? `<span class="chip chip-accent">${icon('refresh-cw')}${t('common.update')}</span>` : ''}
             </div>
-            ${['queued', 'downloading', 'installing'].includes(t.state) ? `<div class="progress ${indet ? 'indeterminate' : ''}"><div style="width:${t.state === 'queued' ? 0 : pct}%"></div></div>` : ''}
-            <div class="dl-sub ${t.state === 'error' ? 'err' : ''}">${labels[t.state]}${t.state === 'downloading' && t.progress ? ` · ${pct} % von ${fmtSize(t.size)}` : t.size ? ` · ${fmtSize(t.size)}` : ''}${t.error ? ` – ${h(t.error)}` : ''}</div>
+            ${['queued', 'downloading', 'installing'].includes(task.state) ? `<div class="progress ${indet ? 'indeterminate' : ''}"><div style="width:${task.state === 'queued' ? 0 : pct}%"></div></div>` : ''}
+            <div class="dl-sub ${task.state === 'error' ? 'err' : ''}">${t('dl.state.' + task.state)}${h(detail)}${task.error ? ` – ${h(task.error)}` : ''}</div>
           </div>
-          ${t.state === 'done' ? `<span class="chip chip-ok">${icon('check')}Installiert</span>` : ''}
-          ${t.state === 'error' ? `<button class="btn btn-sm" data-action="retry" data-id="${t.id}">${icon('rotate-ccw')}Erneut</button>` : ''}
+          ${task.state === 'done' ? `<span class="chip chip-ok">${icon('check')}${t('common.installed')}</span>` : ''}
+          ${task.state === 'error' ? `<button class="btn btn-sm" data-action="retry" data-id="${task.id}">${icon('rotate-ccw')}${t('common.retry')}</button>` : ''}
         </div>`;
     }).join('')}</section>`
-    : `<div class="empty">${icon('download')}<h3>Keine Downloads</h3><p>Installierte Mods aus dem Workshop erscheinen hier mit ihrem Fortschritt.</p></div>`}`;
+    : `<div class="empty">${icon('download')}<h3>${t('dl.emptyTitle')}</h3><p>${t('dl.emptyText')}</p></div>`}`;
 }
 
 // ====================================================================
@@ -1091,54 +1115,58 @@ function viewDownloads() {
 function viewSettings() {
   const s = settings();
   const themes = [
-    ['rimworld', 'RimWorld', 'flame', ['#16130f', '#231e18', '#e3a33c', '#2b251e']],
-    ['dark', 'Dunkel', 'moon', ['#111317', '#1b1f25', '#5b8cff', '#22272e']],
-    ['light', 'Hell', 'sun', ['#f4f5f7', '#ffffff', '#3b6ef5', '#eceef2']]
+    ['rimworld', 'flame', ['#16130f', '#231e18', '#e3a33c', '#2b251e']],
+    ['dark', 'moon', ['#111317', '#1b1f25', '#5b8cff', '#22272e']],
+    ['light', 'sun', ['#f4f5f7', '#ffffff', '#3b6ef5', '#eceef2']]
   ];
-  const toggle = (key, title, sub) => `
-    <div class="setting"><div class="label"><b>${title}</b><small>${sub}</small></div>
+  const toggle = (key, titleKey, sub) => `
+    <div class="setting"><div class="label"><b>${t(titleKey)}</b><small>${h(sub)}</small></div>
       <button class="switch ${s[key] ? 'on' : ''}" data-action="setToggle" data-key="${key}"></button></div>`;
   const pathRow = (key, title, sub) => `
-    <div class="setting"><div class="label"><b>${title}</b><small>${sub}</small></div>
+    <div class="setting"><div class="label"><b>${title}</b><small>${h(sub)}</small></div>
       <div class="path-field"><input class="input" value="${h(s[key])}" readonly>
-        <button class="btn btn-icon" data-action="pickPath" data-key="${key}" title="Ändern">${icon('folder')}</button>
-        <button class="btn btn-icon" data-action="openPath" data-path="${h(s[key])}" title="Öffnen">${icon('external-link')}</button></div></div>`;
+        <button class="btn btn-icon" data-action="pickPath" data-key="${key}" title="${h(t('st.change'))}">${icon('folder')}</button>
+        <button class="btn btn-icon" data-action="openPath" data-path="${h(s[key])}" title="${h(t('st.open'))}">${icon('external-link')}</button></div></div>`;
   return `
-    <div class="view-head"><div><h1>${icon('settings')}Einstellungen</h1></div></div>
+    <div class="view-head"><div><h1>${icon('settings')}${t('st.title')}</h1></div></div>
     <div class="settings">
-      <div class="setting-card"><h3>${icon('sun')}Design</h3>
-        <div class="themes">${themes.map(([k, l, i, c]) => `
+      <div class="setting-card"><h3>${icon('languages')}${t('st.language')}</h3>
+        <div class="setting"><div class="label"><b>${t('st.languageLabel')}</b><small>${t('st.languageSub')}</small></div>
+          <div class="segmented">${I18N.LANGUAGES.map((l) => `<button class="${lang() === l.code ? 'active' : ''}" data-action="setLanguage" data-lang="${l.code}">${h(l.name)}</button>`).join('')}</div></div>
+      </div>
+      <div class="setting-card"><h3>${icon('sun')}${t('st.design')}</h3>
+        <div class="themes">${themes.map(([k, i, c]) => `
           <button class="theme-opt ${s.theme === k ? 'active' : ''}" data-action="setTheme" data-theme="${k}">
             <div class="theme-prev" style="background:${c[0]}"><div class="sb" style="background:${c[1]}"></div>
               <div class="mn"><i style="background:${c[3]}"></i><i style="background:${c[2]}"></i><i style="background:${c[3]}"></i><i style="background:${c[3]}"></i></div></div>
-            <div class="theme-name">${icon(i)}${l}${s.theme === k ? icon('check') : ''}</div>
+            <div class="theme-name">${icon(i)}${t('st.theme.' + k)}${s.theme === k ? icon('check') : ''}</div>
           </button>`).join('')}</div>
       </div>
-      <div class="setting-card"><h3>${icon('gamepad-2')}Spiel</h3>
-        ${pathRow('gameDir', 'RimWorld-Ordner', state.ctx.gameFound ? `Gefunden · Version ${h(state.ctx.version.full)}` : 'Nicht gefunden – bitte auswählen')}
-        ${pathRow('modsDir', 'Mods-Ordner', 'Hier werden neue Mods installiert')}
-        ${pathRow('configDir', 'Config-Ordner', 'Enthält ModsConfig.xml mit der aktiven Mod-Liste')}
-        <div class="setting"><div class="label"><b>Spiel starten über</b><small>Epic startet mit Overlay und Cloud-Saves</small></div>
+      <div class="setting-card"><h3>${icon('gamepad-2')}${t('st.game')}</h3>
+        ${pathRow('gameDir', t('st.gameDir'), state.ctx.gameFound ? t('st.gameFound', { version: state.ctx.version.full }) : t('st.gameNotFound'))}
+        ${pathRow('modsDir', t('st.modsDir'), t('st.modsDirSub'))}
+        ${pathRow('configDir', t('st.configDir'), t('st.configDirSub'))}
+        <div class="setting"><div class="label"><b>${t('st.launchVia')}</b><small>${t('st.launchViaSub')}</small></div>
           <div class="segmented">
             <button class="${s.launchVia === 'epic' ? 'active' : ''}" data-action="setLaunch" data-via="epic" ${s.epicAppName ? '' : 'disabled'}>${icon('store')}Epic Launcher</button>
-            <button class="${s.launchVia !== 'epic' ? 'active' : ''}" data-action="setLaunch" data-via="exe">${icon('play')}Direkt</button>
+            <button class="${s.launchVia !== 'epic' ? 'active' : ''}" data-action="setLaunch" data-via="exe">${icon('play')}${t('st.direct')}</button>
           </div></div>
       </div>
-      <div class="setting-card"><h3>${icon('wand-sparkles')}Verhalten</h3>
-        ${toggle('autoDependencies', 'Abhängigkeiten automatisch installieren', 'Benötigte Mods (z. B. Harmony) werden mit heruntergeladen')}
-        ${toggle('autoActivate', 'Neue Mods automatisch aktivieren', 'Nach der Installation direkt in die aktive Mod-Liste aufnehmen')}
-        ${toggle('autoSortOnInstall', 'Ladereihenfolge automatisch sortieren', 'Beim Aktivieren und Installieren nach Abhängigkeiten sortieren')}
-        ${toggle('versionFilter', 'Workshop nach Spielversion filtern', `Nur Mods anzeigen, die RimWorld ${h(versionNow())} unterstützen`)}
+      <div class="setting-card"><h3>${icon('wand-sparkles')}${t('st.behavior')}</h3>
+        ${toggle('autoDependencies', 'st.autoDeps', t('st.autoDepsSub'))}
+        ${toggle('autoActivate', 'st.autoActivate', t('st.autoActivateSub'))}
+        ${toggle('autoSortOnInstall', 'st.autoSort', t('st.autoSortSub'))}
+        ${toggle('versionFilter', 'st.versionFilter', t('st.versionFilterSub', { version: versionNow() }))}
       </div>
       <div class="setting-card"><h3>${icon('download')}SteamCMD</h3>
-        <div class="setting"><div class="label"><b>Status</b><small>${state.ctx.steamcmdReady ? 'Eingerichtet und bereit' : 'Wird beim ersten Download automatisch eingerichtet'}</small></div>
-          ${state.ctx.steamcmdReady ? `<span class="chip chip-ok">${icon('check')}Bereit</span>` : `<button class="btn" data-action="setupSteamcmd">${icon('download')}Jetzt einrichten</button>`}</div>
-        <div class="setting"><div class="label"><b>Download-Cache leeren</b><small>Entfernt unvollständige Downloads von SteamCMD</small></div>
-          <button class="btn" data-action="clearCache">${icon('trash-2')}Leeren</button></div>
+        <div class="setting"><div class="label"><b>${t('st.status')}</b><small>${state.ctx.steamcmdReady ? t('st.ready') : t('st.notReady')}</small></div>
+          ${state.ctx.steamcmdReady ? `<span class="chip chip-ok">${icon('check')}${t('st.readyChip')}</span>` : `<button class="btn" data-action="setupSteamcmd">${icon('download')}${t('st.setupNow')}</button>`}</div>
+        <div class="setting"><div class="label"><b>${t('st.clearCache')}</b><small>${t('st.clearCacheSub')}</small></div>
+          <button class="btn" data-action="clearCache">${icon('trash-2')}${t('st.clear')}</button></div>
       </div>
-      <div class="setting-card"><h3>${icon('info')}Über</h3>
+      <div class="setting-card"><h3>${icon('info')}${t('st.about')}</h3>
         <div class="setting"><div class="label"><b>RimWorld Mod Library ${h(state.ctx.appVersion)}</b>
-          <small>Mods stammen aus dem Steam Workshop und werden anonym über Valves SteamCMD geladen. Alle Mods gehören ihren jeweiligen Autoren – unterstütze sie mit einem Like auf Steam.</small></div></div>
+          <small>${t('st.aboutText')}</small></div></div>
       </div>
     </div>`;
 }
@@ -1149,8 +1177,7 @@ function viewSettings() {
 async function installWorkshop(ids, opts = {}) {
   const res = await safe(() => window.api.install(ids, opts));
   if (!res) return;
-  const deps = res.dependencies.length ? ` (inkl. ${res.dependencies.length} Abhängigkeit${res.dependencies.length > 1 ? 'en' : ''})` : '';
-  toast(`${res.count} Mod${res.count > 1 ? 's' : ''} zur Download-Warteschlange hinzugefügt${deps}`, 'info');
+  toast(t('toast.queued', { n: res.count, deps: res.dependencies.length }), 'info');
 }
 
 // ====================================================================
@@ -1165,7 +1192,7 @@ const actions = {
   reloadLibrary: async () => {
     await loadLibrary();
     render();
-    toast('Bibliothek neu eingelesen', 'success');
+    toast(t('toast.rescanned'), 'success');
   },
   libFilter: (d) => {
     state.libFilter = d.filter;
@@ -1181,14 +1208,14 @@ const actions = {
   },
   toggleMod: (d) => toggleMod(d.pkg),
   activatePkg: (d) => toggleMod(d.pkg, true),
-  autoSortNow: () => saveActive(state.lib.active, true, 'Ladereihenfolge sortiert'),
+  autoSortNow: () => saveActive(state.lib.active, true, t('toast.sorted')),
   uninstall: async (d) => {
     const mod = modByKey(d.key);
     if (!mod) return;
     const ok = await confirmDialog({
-      title: `„${mod.name}“ entfernen?`,
-      text: 'Der Mod-Ordner wird in den Papierkorb verschoben und aus der aktiven Liste entfernt.',
-      ok: 'Entfernen',
+      title: t('dlg.removeTitle', { name: mod.name }),
+      text: t('dlg.removeText'),
+      ok: t('dlg.remove'),
       danger: true,
       iconName: 'trash-2'
     });
@@ -1201,7 +1228,7 @@ const actions = {
     state.updates = state.updates?.filter((u) => u.id !== mod.workshopId);
     updateBadges();
     render();
-    toast(`„${mod.name}“ entfernt`, 'success');
+    toast(t('toast.removed', { name: mod.name }), 'success');
   },
 
   // Ladereihenfolge
@@ -1230,10 +1257,10 @@ const actions = {
     updateBadges();
     if (state.view !== 'loadorder') setView('loadorder');
     else rerenderKeepScroll();
-    toast('Sortiert – prüfen und speichern', 'info');
+    toast(t('toast.sortedReview'), 'info');
   },
   loSave: async () => {
-    if (await saveActive(state.lo.active, false)) toast('Ladereihenfolge gespeichert', 'success');
+    if (await saveActive(state.lo.active, false)) toast(t('toast.loSaved'), 'success');
   },
   loDiscard: () => {
     state.lo = { ...state.lo, active: [...state.lib.active], issues: state.lib.issues, dirty: false };
@@ -1313,11 +1340,16 @@ const actions = {
   queueClear: () => window.api.clearQueue(),
   queueCancel: () => window.api.cancelQueue(),
   retry: (d) => {
-    const t = state.queue.find((x) => x.id === d.id);
-    installWorkshop([d.id], { isUpdate: t?.isUpdate, withDeps: false });
+    const task = state.queue.find((x) => x.id === d.id);
+    installWorkshop([d.id], { isUpdate: task?.isUpdate, withDeps: false });
   },
 
   // Einstellungen
+  setLanguage: async (d) => {
+    state.ctx.settings = await window.api.setSettings({ language: d.lang });
+    applyStaticTexts();
+    render();
+  },
   setTheme: async (d) => {
     document.documentElement.dataset.theme = d.theme;
     state.ctx.settings = await window.api.setSettings({ theme: d.theme });
@@ -1337,8 +1369,7 @@ const actions = {
     render();
   },
   pickPath: async (d) => {
-    const titles = { gameDir: 'RimWorld-Ordner wählen', modsDir: 'Mods-Ordner wählen', configDir: 'Config-Ordner wählen' };
-    const dir = await window.api.pickFolder(titles[d.key]);
+    const dir = await window.api.pickFolder(t('st.pick.' + d.key));
     if (!dir) return;
     const patch = { [d.key]: dir };
     if (d.key === 'gameDir') Object.assign(patch, { modsDir: '', epicAppName: '' });
@@ -1347,7 +1378,7 @@ const actions = {
     state.lo.dirty = false;
     await loadLibrary();
     render();
-    if (d.key === 'gameDir' && !state.ctx.gameFound) toast('In diesem Ordner wurde keine RimWorldWin64.exe gefunden', 'warning');
+    if (d.key === 'gameDir' && !state.ctx.gameFound) toast(t('toast.noExe'), 'warning');
   },
   setupSteamcmd: async () => {
     await safe(() => window.api.ensureSteamcmd());
@@ -1356,7 +1387,7 @@ const actions = {
   },
   clearCache: async () => {
     await safe(() => window.api.clearSteamcmdCache());
-    toast('Cache geleert', 'success');
+    toast(t('toast.cacheCleared'), 'success');
   }
 };
 
@@ -1402,12 +1433,12 @@ $('#globalSearch').addEventListener('keydown', (e) => {
 });
 $('#btnLaunch').addEventListener('click', async () => {
   if (state.lo.dirty) {
-    const ok = await confirmDialog({ title: 'Ungespeicherte Ladereihenfolge', text: 'Die Änderungen an der Ladereihenfolge sind noch nicht gespeichert. Jetzt speichern und starten?', ok: 'Speichern & starten', iconName: 'save' });
+    const ok = await confirmDialog({ title: t('dlg.unsavedTitle'), text: t('dlg.unsavedText'), ok: t('dlg.saveAndLaunch'), iconName: 'save' });
     if (!ok) return;
     if (!(await saveActive(state.lo.active, false))) return;
   }
   const ok = await safe(() => window.api.launchGame());
-  if (ok) toast('RimWorld wird gestartet …', 'success');
+  if (ok) toast(t('toast.launching'), 'success');
 });
 
 // Events aus dem Hauptprozess
@@ -1423,10 +1454,10 @@ window.api.on('status', (msg) => {
   refreshIcons();
   if (state.view === 'downloads') rerenderKeepScroll();
 });
-window.api.on('toast', (t) => toast(t.text, t.type));
+window.api.on('toast', (msg) => toast(msg.text, msg.type));
 window.api.on('library:changed', async () => {
   await loadLibrary();
-  if (state.updates) state.updates = state.updates.filter((u) => !state.queue.some((t) => t.id === u.id && t.state === 'done'));
+  if (state.updates) state.updates = state.updates.filter((u) => !state.queue.some((x) => x.id === u.id && x.state === 'done'));
   updateBadges();
   if (state.view !== 'downloads') rerenderKeepScroll();
   else patchInstallButtons();

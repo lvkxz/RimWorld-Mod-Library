@@ -4,6 +4,7 @@ const path = require('path');
 const { spawn, execFile } = require('child_process');
 const { app } = require('electron');
 const { APPID } = require('./workshop');
+const { tr } = require('./i18n');
 
 const ZIP_URL = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip';
 
@@ -67,20 +68,20 @@ async function ensure(onStatus = () => {}) {
   if (isReady()) return true;
   fs.mkdirSync(baseDir(), { recursive: true });
   if (!fs.existsSync(exePath())) {
-    onStatus('SteamCMD wird heruntergeladen …');
+    onStatus(tr('status.steamcmdDownloading'));
     const res = await fetch(ZIP_URL, { signal: AbortSignal.timeout(60000) });
-    if (!res.ok) throw new Error(`SteamCMD-Download fehlgeschlagen (HTTP ${res.status})`);
+    if (!res.ok) throw new Error(tr('err.steamcmdDownload', { status: res.status }));
     const zip = path.join(baseDir(), 'steamcmd.zip');
     fs.writeFileSync(zip, Buffer.from(await res.arrayBuffer()));
     await extractZip(zip, baseDir());
     fs.rmSync(zip, { force: true });
   }
-  onStatus('SteamCMD wird eingerichtet (einmalig, ca. 1 Minute) …');
+  onStatus(tr('status.steamcmdSetup'));
   await run(['+quit'], (line) => {
     const m = line.match(/\[\s*(\d+)%\]\s*(.*)/);
-    if (m) onStatus(`SteamCMD wird eingerichtet … ${m[1]}%`);
+    if (m) onStatus(tr('status.steamcmdSetupPct', { pct: m[1] }));
   });
-  if (!isReady()) throw new Error('SteamCMD konnte nicht eingerichtet werden');
+  if (!isReady()) throw new Error(tr('err.steamcmdSetup'));
   onStatus('');
   return true;
 }
@@ -119,7 +120,7 @@ async function downloadItems(ids, onEvent, onLog) {
     }
   });
   // Items ohne Rückmeldung (z. B. Abbruch) als Fehler melden.
-  pending.forEach((id) => onEvent({ type: 'error', id, reason: 'Keine Rückmeldung von SteamCMD' }));
+  pending.forEach((id) => onEvent({ type: 'error', id, reason: 'NoResponse' }));
 }
 
 function cancel() {

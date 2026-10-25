@@ -127,7 +127,8 @@ function versionSupported(mod, shortVersion) {
   return mod.supportedVersions.some((v) => v.trim() === shortVersion);
 }
 
-// Liefert Hinweise pro packageId: { level: 'error'|'warning', text, fix? }.
+// Liefert Hinweise pro packageId: { level: 'error'|'warning', code, params, fix? }.
+// Die Oberfläche übersetzt code/params (Schlüssel 'issue.<code>' in shared/i18n.js).
 function analyze(activeIds, mods, shortVersion) {
   const byPackage = new Map();
   const duplicates = new Set();
@@ -137,25 +138,25 @@ function analyze(activeIds, mods, shortVersion) {
   }
   const pos = new Map(activeIds.map((id, i) => [id, i]));
   const issues = {};
-  const add = (id, level, text, fix) => (issues[id] = issues[id] || []).push({ level, text, fix });
+  const add = (id, level, code, params, fix) => (issues[id] = issues[id] || []).push({ level, code, params, fix });
 
   for (const id of activeIds) {
     const mod = byPackage.get(id);
     if (!mod) {
-      add(id, 'error', 'Aktiv, aber nicht installiert');
+      add(id, 'error', 'notInstalledActive', {});
       continue;
     }
-    if (duplicates.has(id)) add(id, 'warning', 'Mehrfach installiert (gleiche packageId)');
+    if (duplicates.has(id)) add(id, 'warning', 'duplicate', {});
     if (!versionSupported(mod, shortVersion)) {
-      add(id, 'warning', `Unterstützt offiziell nur ${mod.supportedVersions.join(', ')}`);
+      add(id, 'warning', 'version', { versions: mod.supportedVersions.join(', ') });
     }
     for (const dep of mod.dependencies) {
       if (!pos.has(dep.packageId)) {
         const installed = byPackage.get(dep.packageId);
-        add(id, 'error', `Benötigt „${dep.displayName}“ – ${installed ? 'nicht aktiv' : 'nicht installiert'}`,
+        add(id, 'error', installed ? 'depInactive' : 'depMissing', { name: dep.displayName },
           installed ? { type: 'activate', packageId: dep.packageId } : { type: 'install', workshopId: dep.workshopId, name: dep.displayName });
       } else if (pos.get(dep.packageId) > pos.get(id)) {
-        add(id, 'error', `Muss nach „${dep.displayName}“ geladen werden`, { type: 'sort' });
+        add(id, 'error', 'depOrder', { name: dep.displayName }, { type: 'sort' });
       }
     }
     const depIds = new Set(mod.dependencies.map((d) => d.packageId));
@@ -163,16 +164,16 @@ function analyze(activeIds, mods, shortVersion) {
       // Bereits als Abhängigkeit gemeldet ("Muss nach … geladen werden").
       if (depIds.has(other)) continue;
       if (pos.has(other) && pos.get(other) > pos.get(id)) {
-        add(id, 'warning', `Sollte nach „${byPackage.get(other)?.name || other}“ geladen werden`, { type: 'sort' });
+        add(id, 'warning', 'loadAfter', { name: byPackage.get(other)?.name || other }, { type: 'sort' });
       }
     }
     for (const other of mod.loadBefore) {
       if (pos.has(other) && pos.get(other) < pos.get(id)) {
-        add(id, 'warning', `Sollte vor „${byPackage.get(other)?.name || other}“ geladen werden`, { type: 'sort' });
+        add(id, 'warning', 'loadBefore', { name: byPackage.get(other)?.name || other }, { type: 'sort' });
       }
     }
     for (const other of mod.incompatibleWith) {
-      if (pos.has(other)) add(id, 'error', `Inkompatibel mit „${byPackage.get(other)?.name || other}“`);
+      if (pos.has(other)) add(id, 'error', 'incompatible', { name: byPackage.get(other)?.name || other });
     }
   }
   return issues;

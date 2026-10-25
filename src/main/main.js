@@ -11,6 +11,8 @@ const modsconfig = require('./modsconfig');
 const workshop = require('./workshop');
 const steamcmd = require('./steamcmd');
 const { Installer } = require('./installer');
+const i18n = require('./i18n');
+const { tr } = i18n;
 
 // Beliebte, bewährte Mods als Startpunkt für die Vorschläge.
 const ESSENTIALS = [
@@ -103,7 +105,7 @@ async function saveActive(active, { sort = false } = {}) {
   if (!list.includes(modsconfig.CORE)) list.unshift(modsconfig.CORE);
   if (sort) list = modsconfig.autoSort(list, byPackageMap());
   if (await isGameRunning()) {
-    throw new Error('RimWorld läuft gerade. Bitte zuerst das Spiel schließen – es überschreibt sonst die Mod-Liste beim Beenden.');
+    throw new Error(tr('err.gameRunning'));
   }
   const officials = lastScan.mods.filter((m) => m.official).map((m) => m.packageId);
   modsconfig.writeConfig(s.configDir, list, version.full, officials);
@@ -164,12 +166,12 @@ const installer = new Installer({
           .filter(Boolean)
           .map((m) => m.packageId);
         await saveActive([...current, ...added], { sort: settings.get().autoSortOnInstall });
-        send('toast', { type: 'success', text: `${added.length} Mod(s) installiert und aktiviert` });
+        send('toast', { type: 'success', text: tr('toast.installedActivated', { n: added.length }) });
       } catch (e) {
-        send('toast', { type: 'warning', text: `Installiert, aber nicht aktiviert: ${e.message}` });
+        send('toast', { type: 'warning', text: tr('toast.installedNotActivated', { error: e.message }) });
       }
     } else {
-      send('toast', { type: 'success', text: `${done.length} Mod(s) installiert` });
+      send('toast', { type: 'success', text: tr('toast.installed', { n: done.length }) });
     }
     send('library:changed');
   }
@@ -238,6 +240,7 @@ handle('app:context', () => {
 
 handle('settings:set', (partial) => {
   const next = settings.set(partial);
+  if (partial.language) i18n.setLanguage(partial.language);
   if (partial.theme && win) {
     try {
       win.setTitleBarOverlay({ ...(TITLEBAR[partial.theme] || TITLEBAR.rimworld), height: 40 });
@@ -267,7 +270,7 @@ handle('library:uninstall', async (modPath) => {
   const { s } = ctx();
   const mod = lastScan.mods.find((m) => m.path === modPath);
   if (!mod || mod.official || !path.resolve(modPath).startsWith(path.resolve(s.modsDir))) {
-    throw new Error('Nur Mods aus dem Mods-Ordner können entfernt werden');
+    throw new Error(tr('err.onlyModsFolder'));
   }
   await shell.trashItem(modPath); // in den Papierkorb – wiederherstellbar
   if (mod.workshopId) installs.remove(mod.workshopId);
@@ -363,7 +366,7 @@ handle('install:enqueue', async (ids, opts = {}) => {
   let all = roots;
   let depNames = {};
   if (withDeps && !opts.isUpdate) {
-    send('status', 'Abhängigkeiten werden geprüft …');
+    send('status', tr('status.checkingDeps'));
     const res = await workshop.resolveDependencies(roots, (id) => lastScan.byWorkshop.has(id));
     all = res.ids;
     depNames = res.names;
@@ -396,12 +399,12 @@ handle('steamcmd:clearCache', () => steamcmd.clearCache());
 
 handle('game:launch', async () => {
   const { s } = ctx();
-  if (await isGameRunning()) throw new Error('RimWorld läuft bereits');
+  if (await isGameRunning()) throw new Error(tr('err.alreadyRunning'));
   if (s.launchVia === 'epic' && s.epicAppName) {
     await shell.openExternal(`com.epicgames.launcher://apps/${s.epicAppName}?action=launch&silent=true`);
   } else {
     const exe = path.join(s.gameDir, EXE);
-    if (!fs.existsSync(exe)) throw new Error('RimWorldWin64.exe nicht gefunden');
+    if (!fs.existsSync(exe)) throw new Error(tr('err.exeNotFound'));
     spawn(exe, [], { cwd: s.gameDir, detached: true, stdio: 'ignore' }).unref();
   }
   return true;
@@ -409,6 +412,7 @@ handle('game:launch', async () => {
 
 app.whenReady().then(() => {
   nativeTheme.themeSource = 'dark';
+  i18n.setLanguage(settings.get().language);
   createWindow();
 });
 app.on('window-all-closed', () => {
