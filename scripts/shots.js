@@ -37,7 +37,7 @@ app.whenReady().then(async () => {
       }
       if (step.wait) await sleep(step.wait);
       if (step.shot) {
-        const img = await win.webContents.capturePage();
+        const img = await win.webContents.capturePage(step.crop);
         fs.writeFileSync(path.join(outDir, step.shot + '.png'), img.toPNG());
         console.log('shot', step.shot);
       }

@@ -647,7 +647,7 @@ function viewLoadOrder() {
       </section>
     </div>
     <section class="panel issues">
-      <div class="panel-head"><h3>${icon(allIssues.length ? 'triangle-alert' : 'shield-alert')}${allIssues.length ? `${allIssues.length} Hinweise` : 'Keine Probleme gefunden'}</h3></div>
+      <div class="panel-head"><h3>${icon(allIssues.length ? 'triangle-alert' : 'shield-alert')}${allIssues.length ? `${allIssues.length} ${allIssues.length === 1 ? 'Hinweis' : 'Hinweise'}` : 'Keine Probleme gefunden'}</h3></div>
       ${allIssues.map((i) => {
         const mod = modByPkg(i.pkg);
         return `<div class="issue ${i.level === 'error' ? 'err' : ''}">${icon(i.level === 'error' ? 'circle-alert' : 'triangle-alert')}

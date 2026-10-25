@@ -85,6 +85,21 @@ async function ensure(onStatus = () => {}) {
   return true;
 }
 
+const LINE_PATTERNS = [
+  [/Downloading item (\d+)/g, (m) => ({ type: 'start', id: m[1] })],
+  [/Success\. Downloaded item (\d+) to "([^"]+)"/g, (m) => ({ type: 'success', id: m[1], path: m[2] })],
+  [/ERROR! Download item (\d+) failed \(([^)]*)\)/g, (m) => ({ type: 'error', id: m[1], reason: m[2] })]
+];
+
+// Alle Ereignisse einer Ausgabezeile in der Reihenfolge ihres Auftretens.
+function parseLine(line) {
+  const events = [];
+  for (const [re, make] of LINE_PATTERNS) {
+    for (const m of line.matchAll(re)) events.push({ index: m.index, ...make(m) });
+  }
+  return events.sort((a, b) => a.index - b.index).map(({ index, ...ev }) => ev);
+}
+
 // Lädt mehrere Items in einer SteamCMD-Sitzung. Events: { type: 'start'|'success'|'error', id, path?, reason? }
 async function downloadItems(ids, onEvent, onLog) {
   // Den Workshop-Status von SteamCMD verwerfen, damit Updates immer frisch geladen werden.
@@ -96,17 +111,11 @@ async function downloadItems(ids, onEvent, onLog) {
   const pending = new Set(ids.map(String));
   await run(args, (line) => {
     onLog?.(line);
-    let m;
-    if ((m = line.match(/Downloading item (\d+)/))) {
-      onEvent({ type: 'start', id: m[1] });
-    } else if ((m = line.match(/Success\. Downloaded item (\d+) to "([^"]+)"/))) {
-      pending.delete(m[1]);
-      onEvent({ type: 'success', id: m[1], path: m[2] });
-    } else if ((m = line.match(/ERROR! Download item (\d+) failed \(([^)]*)\)/))) {
-      pending.delete(m[1]);
-      onEvent({ type: 'error', id: m[1], reason: m[2] });
-    } else if (/FAILED \(|Login Failure|No subscription/.test(line)) {
-      onLog?.(line);
+    // SteamCMD schreibt oft mehrere Meldungen in eine Zeile, z. B.
+    // 'Success. Downloaded item A to "…" (123 bytes) Downloading item B ...' – daher alle der Reihe nach auswerten.
+    for (const ev of parseLine(line)) {
+      if (ev.type !== 'start') pending.delete(ev.id);
+      onEvent(ev);
     }
   });
   // Items ohne Rückmeldung (z. B. Abbruch) als Fehler melden.
@@ -139,4 +148,4 @@ function clearCache() {
   fs.rmSync(path.join(contentDir(), 'steamapps'), { recursive: true, force: true });
 }
 
-module.exports = { ensure, isReady, downloadItems, cancel, itemDir, downloadedBytes, clearCache, baseDir };
+module.exports = { ensure, isReady, downloadItems, parseLine, cancel, itemDir, downloadedBytes, clearCache, baseDir };

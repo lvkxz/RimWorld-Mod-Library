@@ -158,7 +158,10 @@ function analyze(activeIds, mods, shortVersion) {
         add(id, 'error', `Muss nach „${dep.displayName}“ geladen werden`, { type: 'sort' });
       }
     }
+    const depIds = new Set(mod.dependencies.map((d) => d.packageId));
     for (const other of mod.loadAfter) {
+      // Bereits als Abhängigkeit gemeldet ("Muss nach … geladen werden").
+      if (depIds.has(other)) continue;
       if (pos.has(other) && pos.get(other) > pos.get(id)) {
         add(id, 'warning', `Sollte nach „${byPackage.get(other)?.name || other}“ geladen werden`, { type: 'sort' });
       }
