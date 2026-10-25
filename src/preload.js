@@ -8,6 +8,10 @@ const call = async (channel, ...args) => {
 
 contextBridge.exposeInMainWorld('api', {
   context: () => call('app:context'),
+  about: () => call('app:about'),
+  checkRelease: () => call('app:checkRelease'),
+  openDoc: (name) => call('app:openDoc', name),
+  copyText: (text) => call('app:copy', text),
   setSettings: (partial) => call('settings:set', partial),
   pickFolder: (title) => call('dialog:folder', title),
 

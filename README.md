@@ -115,6 +115,9 @@ The Steam Workshop is where nearly all RimWorld mods live, but it only works wit
 - 💾 **Automatic backup** of `ModsConfig.xml` before every change
 - 🧭 **Auto-detection** of Epic, GOG and Steam installations and your game version
 - 🌐 **English and German** interface, switchable at any time
+- ℹ️ **About page** with app and RimWorld version, an update check against GitHub releases, links to report bugs, credits and licenses
+
+<p align="center"><img src="docs/screenshots/about.png" alt="About page" width="720" /></p>
 
 ---
 
@@ -256,6 +259,18 @@ Large mods sometimes time out on Steam's side. The app retries automatically up 
 <summary><b>A mod shows a red warning sign.</b></summary>
 <br/>
 Open the mod, because the details explain the problem. Usually a dependency is missing or loads in the wrong order. Missing dependencies can be installed with one click, and <b>Auto-sort</b> fixes the order.
+</details>
+
+<details>
+<summary><b>How do I know when there's a new version?</b></summary>
+<br/>
+The <b>About</b> page checks GitHub for a newer release every time the app starts. If there is one, a <b>New</b> badge appears next to <b>About</b> in the sidebar, and you can download the update from there.
+</details>
+
+<details>
+<summary><b>How do I report a bug?</b></summary>
+<br/>
+Open <b>About</b>, click <b>Copy system info</b> and then <b>Report a bug</b>. Paste the copied info into the GitHub issue. It contains only version numbers and your Windows version, no personal data or folder paths.
 </details>
 
 <details>

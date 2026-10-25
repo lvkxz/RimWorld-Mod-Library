@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, clipboard } = require('electron');
 const path = require('path');
+const os = require('os');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { execFile, spawn } = require('child_process');
@@ -13,6 +14,9 @@ const steamcmd = require('./steamcmd');
 const { Installer } = require('./installer');
 const i18n = require('./i18n');
 const { tr } = i18n;
+
+// Version aus package.json (app.getVersion() liefert ohne package.json die Electron-Version).
+const APP_VERSION = require('../../package.json').version;
 
 // Beliebte, bewährte Mods als Startpunkt für die Vorschläge.
 const ESSENTIALS = [
@@ -234,7 +238,7 @@ handle('app:context', () => {
     version,
     gameFound: isGameDir(s.gameDir),
     steamcmdReady: steamcmd.isReady(),
-    appVersion: app.getVersion()
+    appVersion: APP_VERSION
   };
 });
 
@@ -300,6 +304,60 @@ handle('library:checkUpdates', async () => {
   }
   return updates;
 });
+
+// ---------- Über die App ----------
+const REPO = 'lvkxz/RimWorld-Mod-Library';
+
+function osLabel() {
+  if (process.platform !== 'win32') return `${os.type()} ${os.release()} (${process.arch})`;
+  const build = Number(os.release().split('.')[2]) || 0;
+  return `Windows ${build >= 22000 ? 11 : 10} (Build ${build}, ${process.arch})`;
+}
+
+// true, wenn Version a neuer ist als b (z. B. "1.2.0" > "1.1.9").
+function isNewer(a, b) {
+  const pa = String(a).split(/[.-]/).map((x) => parseInt(x, 10) || 0);
+  const pb = String(b).split(/[.-]/).map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+  }
+  return false;
+}
+
+handle('app:about', () => ({
+  appVersion: APP_VERSION,
+  electron: process.versions.electron,
+  chrome: process.versions.chrome,
+  node: process.versions.node,
+  os: osLabel(),
+  userData: app.getPath('userData'),
+  repo: REPO
+}));
+
+// Neuestes Release auf GitHub. 404 = noch kein (öffentliches) Release.
+handle('app:checkRelease', async () => {
+  const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+    headers: { 'User-Agent': 'RimWorld-Mod-Library', Accept: 'application/vnd.github+json' },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (res.status === 404) return { state: 'none' };
+  if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
+  const data = await res.json();
+  const latest = String(data.tag_name || '').replace(/^v/i, '');
+  return { state: isNewer(latest, APP_VERSION) ? 'update' : 'current', latest, url: data.html_url };
+});
+
+// Lizenztexte: im Build neben der .exe (extraFiles), im Quellcode im Projektordner.
+handle('app:openDoc', (name) => {
+  const files = { license: ['LICENSE.txt', 'LICENSE'], notices: ['THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES.md'] };
+  const [packaged, source] = files[name] || [];
+  if (!packaged) return;
+  const file = app.isPackaged ? path.join(path.dirname(process.execPath), packaged) : path.join(__dirname, '..', '..', source);
+  if (fs.existsSync(file)) return shell.openPath(file);
+  return openExternal(`https://github.com/${REPO}/blob/main/${source}`);
+});
+
+handle('app:copy', (text) => clipboard.writeText(String(text)));
 
 handle('shell:open', (target) => {
   if (/^(https?:|steam:)/i.test(target)) return openExternal(target);

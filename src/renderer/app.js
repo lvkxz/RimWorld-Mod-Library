@@ -22,7 +22,9 @@ const state = {
   collSelected: new Set(),
   collLoading: false,
   collInput: '',
-  status: ''
+  status: '',
+  about: null,
+  release: null      // { state: 'checking'|'current'|'update'|'none'|'error', latest?, url?, error? }
 };
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -180,6 +182,7 @@ function updateBadges() {
   set('#badgeUpdates', state.updates?.length || 0);
   const busy = state.queue.filter((x) => ['queued', 'downloading', 'installing'].includes(x.state)).length;
   set('#badgeDownloads', busy);
+  set('#badgeAbout', state.release?.state === 'update' ? t('ab.newBadge') : '');
 }
 
 async function checkUpdates(silent = false) {
@@ -206,7 +209,7 @@ function setView(view) {
 }
 
 function render() {
-  const views = { library: viewLibrary, loadorder: viewLoadOrder, workshop: viewWorkshop, suggestions: viewSuggestions, updates: viewUpdates, collections: viewCollections, downloads: viewDownloads, settings: viewSettings };
+  const views = { library: viewLibrary, loadorder: viewLoadOrder, workshop: viewWorkshop, suggestions: viewSuggestions, updates: viewUpdates, collections: viewCollections, downloads: viewDownloads, settings: viewSettings, about: viewAbout };
   content().innerHTML = (views[state.view] || viewLibrary)();
   refreshIcons();
   afterRender[state.view]?.();
@@ -1164,11 +1167,142 @@ function viewSettings() {
         <div class="setting"><div class="label"><b>${t('st.clearCache')}</b><small>${t('st.clearCacheSub')}</small></div>
           <button class="btn" data-action="clearCache">${icon('trash-2')}${t('st.clear')}</button></div>
       </div>
-      <div class="setting-card"><h3>${icon('info')}${t('st.about')}</h3>
-        <div class="setting"><div class="label"><b>RimWorld Mod Library ${h(state.ctx.appVersion)}</b>
-          <small>${t('st.aboutText')}</small></div></div>
+    </div>`;
+}
+
+// ====================================================================
+// Ansicht: Über die App
+// ====================================================================
+const REPO_URL = 'https://github.com/lvkxz/RimWorld-Mod-Library';
+const AVATAR_URL = 'https://github.com/lvkxz.png?size=96';
+
+function releaseStatus() {
+  const r = state.release;
+  if (!r || r.state === 'checking') {
+    return `<div class="about-update">${icon('loader-circle', 'spin')}<div class="grow"><b>${t('ab.checking')}</b></div></div>`;
+  }
+  if (r.state === 'update') {
+    return `<div class="about-update new">${icon('sparkles')}<div class="grow"><b>${h(t('ab.newVersion', { version: r.latest }))}</b><p>${t('ab.newVersionText')}</p></div>
+      <button class="btn btn-primary" data-action="openUrl" data-url="${h(r.url)}">${icon('download')}${t('ab.download')}</button></div>`;
+  }
+  const map = {
+    current: ['circle-check-big', 'ok', t('ab.upToDate')],
+    none: ['info', '', t('ab.noRelease')],
+    error: ['circle-alert', 'warn', t('ab.checkFailed', { error: r.error || '' })]
+  };
+  const [ic, cls, text] = map[r.state] || map.none;
+  return `<div class="about-update ${cls}">${icon(ic)}<div class="grow"><b>${h(text)}</b></div>
+    <button class="btn" data-action="checkRelease">${icon('rotate-ccw')}${t('ab.checkNow')}</button></div>`;
+}
+
+// Text für Fehlerberichte – bewusst ohne Pfade (enthalten den Windows-Benutzernamen).
+function systemInfoText() {
+  const a = state.about || {};
+  const v = state.ctx?.version;
+  return [
+    `RimWorld Mod Library ${a.appVersion || ''}`,
+    `Electron ${a.electron || ''} · Chromium ${a.chrome || ''} · Node ${a.node || ''}`,
+    `${t('ab.os')}: ${a.os || ''}`,
+    `RimWorld: ${state.ctx?.gameFound ? v.full : t('ab.rimworldNotFound')}`,
+    `Language: ${lang()}`
+  ].join('\n');
+}
+
+function viewAbout() {
+  const a = state.about;
+  if (!a) return `<div class="empty">${icon('loader-circle', 'spin')}</div>`;
+  const v = state.ctx.version;
+  const link = (url, ic, label) => `<button class="about-link" data-action="openUrl" data-url="${h(url)}">${icon(ic)}<span>${label}</span>${icon('external-link', 'ext')}</button>`;
+  const credits = [
+    ['gamepad-2', 'ab.credit.ludeon'], ['download', 'ab.credit.steamcmd'], ['heart', 'ab.credit.modders'],
+    ['box', 'ab.credit.electron'], ['sparkles', 'ab.credit.lucide'], ['package', 'ab.credit.xml']
+  ];
+  return `
+    <div class="view-head"><div><h1>${icon('info')}${t('ab.title')}</h1></div></div>
+    <div class="settings about">
+      <section class="about-hero">
+        <img src="../../assets/icon.png" alt="">
+        <div class="grow">
+          <h2>RimWorld Mod Library</h2>
+          <p>${t('ab.tagline')}</p>
+          <div class="about-chips">
+            <span class="chip chip-accent">${icon('tag')}${h(t('ab.version', { version: a.appVersion }))}</span>
+            <span class="chip">${icon('languages')}English · Deutsch</span>
+            <span class="chip">${icon('monitor')}Windows</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="setting-card"><h3>${icon('refresh-cw')}${t('ab.updates')}</h3>${releaseStatus()}</div>
+
+      <div class="about-grid">
+        <div class="setting-card"><h3>${icon('user')}${t('ab.author')}</h3>
+          <div class="about-author">
+            <div class="avatar">${icon('code')}<img src="${AVATAR_URL}" alt="" hidden></div>
+            <div class="grow"><b>lvkxz</b><small>${h(t('ab.authorText', { author: 'lvkxz' }))}</small></div>
+          </div>
+          <div class="about-links">
+            ${link('https://github.com/lvkxz', 'user', t('ab.profile'))}
+            ${link(REPO_URL, 'code', t('ab.repo'))}
+            ${link(REPO_URL + '/releases', 'package', t('ab.releases'))}
+            ${link(REPO_URL + '/issues/new', 'bug', t('ab.issues'))}
+          </div>
+        </div>
+
+        <div class="setting-card"><h3>${icon('cpu')}${t('ab.system')}</h3>
+          <dl class="kv about-kv">
+            <dt>${t('ab.appVersion')}</dt><dd>${h(a.appVersion)}</dd>
+            <dt>${t('ab.rimworld')}</dt><dd>${state.ctx.gameFound ? h(v.full) : t('ab.rimworldNotFound')}</dd>
+            <dt>${t('ab.dataDir')}</dt><dd><button class="btn btn-sm" data-action="openPath" data-path="${h(a.userData)}">${icon('folder-open')}${t('st.open')}</button></dd>
+          </dl>
+          <div class="about-actions"><button class="btn" data-action="copySystemInfo">${icon('clipboard')}${t('ab.copy')}</button></div>
+        </div>
+      </div>
+
+      <div class="setting-card"><h3>${icon('heart')}${t('ab.credits')}</h3>
+        <div class="about-credits">${credits.map(([ic, key]) => `<div class="credit">${icon(ic)}<span>${t(key)}</span></div>`).join('')}</div>
+      </div>
+
+      <div class="setting-card"><h3>${icon('scale')}${t('ab.legal')}</h3>
+        <div class="about-legal">
+          <b>${h(t('ab.copyright', { year: new Date().getFullYear() }))}</b>
+          <p>${t('ab.disclaimer')}</p>
+          <div class="about-actions">
+            <button class="btn" data-action="openDoc" data-doc="license">${icon('file-text')}${t('ab.license')}</button>
+            <button class="btn" data-action="openDoc" data-doc="notices">${icon('files')}${t('ab.notices')}</button>
+          </div>
+        </div>
       </div>
     </div>`;
+}
+afterRender.about = () => {
+  if (!state.about) loadAbout();
+  // GitHub-Profilbild erst zeigen, wenn es geladen ist – offline bleibt das Icon stehen.
+  const img = $('.about-author .avatar img');
+  if (!img) return;
+  const show = () => {
+    img.hidden = false;
+    img.previousElementSibling?.remove();
+  };
+  if (img.complete && img.naturalWidth) show();
+  else img.addEventListener('load', show, { once: true });
+};
+
+async function loadAbout() {
+  state.about = await safe(() => window.api.about());
+  if (state.view === 'about') rerenderKeepScroll();
+}
+
+async function checkRelease() {
+  state.release = { state: 'checking' };
+  if (state.view === 'about') rerenderKeepScroll();
+  try {
+    state.release = await window.api.checkRelease();
+  } catch (e) {
+    state.release = { state: 'error', error: e.message };
+  }
+  updateBadges();
+  if (state.view === 'about') rerenderKeepScroll();
 }
 
 // ====================================================================
@@ -1344,10 +1478,18 @@ const actions = {
     installWorkshop([d.id], { isUpdate: task?.isUpdate, withDeps: false });
   },
 
+  // Über die App
+  checkRelease: () => checkRelease(),
+  openDoc: (d) => window.api.openDoc(d.doc),
+  copySystemInfo: async () => {
+    if ((await safe(() => window.api.copyText(systemInfoText()))) !== undefined) toast(t('ab.copied'), 'success');
+  },
+
   // Einstellungen
   setLanguage: async (d) => {
     state.ctx.settings = await window.api.setSettings({ language: d.lang });
     applyStaticTexts();
+    updateBadges();
     render();
   },
   setTheme: async (d) => {
@@ -1486,4 +1628,5 @@ window.api.on('library:changed', async () => {
   state.queue = await window.api.queue();
   updateBadges();
   if (state.ctx.gameFound) checkUpdates(true);
+  checkRelease();
 })();
