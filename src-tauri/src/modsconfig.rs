@@ -5,11 +5,25 @@ use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::SystemTime;
 
 pub const CORE: &str = "ludeon.rimworld";
 
+// Änderungszeit nach dem letzten eigenen Schreiben, damit der Watcher eigene Änderungen nicht meldet.
+static OWN_WRITE: Mutex<Option<SystemTime>> = Mutex::new(None);
+
 fn config_file(config_dir: &str) -> PathBuf {
     Path::new(config_dir).join("ModsConfig.xml")
+}
+
+pub fn modified(config_dir: &str) -> Option<SystemTime> {
+    fs::metadata(config_file(config_dir)).and_then(|m| m.modified()).ok()
+}
+
+pub fn is_own_write(config_dir: &str) -> bool {
+    let current = modified(config_dir);
+    current.is_some() && *OWN_WRITE.lock().unwrap() == current
 }
 
 pub struct Config {
@@ -59,7 +73,9 @@ pub fn write_config(config_dir: &str, active: &[String], game_version_full: &str
             escape_xml(game_version_full)
         )
     };
-    fs::write(file, xml)
+    fs::write(file, xml)?;
+    *OWN_WRITE.lock().unwrap() = modified(config_dir);
+    Ok(())
 }
 
 // Version mitschreiben: RimWorld verwirft eine ModsConfig.xml aus einer anderen Hauptversion (z. B. 1.4) komplett.

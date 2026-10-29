@@ -75,14 +75,14 @@ function updateGameMeta() {
     : t('game.notFound');
 }
 
-function toast(text, type = 'info') {
+function toast(text, type = 'info', ms = type === 'error' ? 7000 : 4200) {
   const icons = { info: 'info', success: 'circle-check-big', warning: 'triangle-alert', error: 'circle-alert' };
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.innerHTML = `${icon(icons[type] || 'info')}<span>${h(text)}</span>`;
   $('#toasts').appendChild(el);
   refreshIcons();
-  setTimeout(() => el.remove(), type === 'error' ? 7000 : 4200);
+  setTimeout(() => el.remove(), ms);
 }
 
 async function safe(fn) {
@@ -1579,8 +1579,9 @@ $('#btnLaunch').addEventListener('click', async () => {
     if (!ok) return;
     if (!(await saveActive(state.lo.active, false))) return;
   }
-  const ok = await safe(() => window.api.launchGame());
-  if (ok) toast(t('toast.launching'), 'success');
+  const res = await safe(() => window.api.launchGame());
+  if (res) toast(t('toast.launching'), 'success');
+  if (res?.cloudPrompt) toast(t('toast.epicCloud'), 'warning', 15000);
 });
 
 // Events aus dem Backend

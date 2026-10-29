@@ -2,6 +2,7 @@
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 const EPIC_MANIFESTS: &str = r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests";
 pub const EXE: &str = "RimWorldWin64.exe";
@@ -48,6 +49,23 @@ fn find_common() -> Option<(String, String)> {
         }
     }
     candidates.into_iter().find(|c| is_game_dir(c)).map(|c| (c, String::new()))
+}
+
+/// Zeitpunkt des letzten Cloud-Abgleichs durch Epic (neuestes Manifest im lokalen Cloud-Cache); None ohne Cloud-Saves.
+pub fn epic_cloud_synced_at(app_name: &str) -> Option<SystemTime> {
+    if app_name.is_empty() {
+        return None;
+    }
+    let saves = PathBuf::from(std::env::var("LOCALAPPDATA").ok()?).join("EpicGamesLauncher").join("Saved").join("Saves");
+    fs::read_dir(saves)
+        .ok()?
+        .flatten()
+        .filter_map(|account| fs::read_dir(account.path().join(app_name).join("CloudCache")).ok())
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "manifest"))
+        .filter_map(|e| e.metadata().and_then(|m| m.modified()).ok())
+        .max()
 }
 
 fn default_config_dir() -> String {

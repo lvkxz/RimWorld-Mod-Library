@@ -8,6 +8,7 @@ mod paths;
 mod steamcmd;
 mod store;
 mod util;
+mod watch;
 mod workshop;
 mod xml;
 
@@ -68,12 +69,19 @@ pub struct Core {
     app: AppHandle,
     scan: Mutex<Scan>,
     asset_dirs: Mutex<HashSet<String>>,
+    config_watcher: watch::ConfigWatcher,
     pub installer: Installer,
 }
 
 impl Core {
     pub fn send(&self, channel: &str, payload: Value) {
         let _ = self.app.emit(channel, payload);
+    }
+
+    /// Änderungen an ModsConfig.xml von außen (Spiel) live an die Oberfläche melden.
+    fn watch_config(&self) {
+        let s = resolve_paths(&settings::get());
+        self.config_watcher.watch(&self.app, s["configDir"].as_str().unwrap_or_default());
     }
 
     /// Einstellungen mit aufgelösten Pfaden und Spielversion.
@@ -172,6 +180,7 @@ impl Core {
         }
         let config_dir = s["configDir"].as_str().unwrap_or_default();
         modsconfig::write_config(config_dir, &list, version["full"].as_str().unwrap_or_default(), &self.officials())?;
+        self.watch_config(); // Config-Ordner kann eben erst angelegt worden sein
         self.library_state()
     }
 
@@ -319,8 +328,11 @@ async fn app_context(app: AppHandle, core: CoreState<'_>) -> Res<Value> {
 }
 
 #[tauri::command]
-async fn settings_set(app: AppHandle, partial: Value) -> Res<Value> {
+async fn settings_set(app: AppHandle, core: CoreState<'_>, partial: Value) -> Res<Value> {
     let next = settings::set(&partial)?;
+    if partial.get("configDir").is_some() {
+        core.watch_config();
+    }
     if let Some(theme) = partial.get("theme").and_then(Value::as_str) {
         if let Some(win) = app.get_webview_window("main") {
             let _ = win.set_background_color(Some(titlebar_color(theme)));
@@ -698,13 +710,17 @@ async fn steamcmd_clear_cache() -> Res<Value> {
 }
 
 #[tauri::command]
-async fn game_launch(app: AppHandle, core: CoreState<'_>) -> Res<bool> {
+async fn game_launch(app: AppHandle, core: CoreState<'_>) -> Res<Value> {
     let (s, _) = core.ctx();
     if is_game_running().await {
         return Err(AppError::tr("err.alreadyRunning"));
     }
     let epic = s["epicAppName"].as_str().unwrap_or_default();
+    let mut cloud_prompt = false;
     if s["launchVia"] == "epic" && !epic.is_empty() {
+        // Epic fragt nach dem Cloud-Stand, wenn ModsConfig.xml seit dem letzten Abgleich außerhalb des Spiels geändert wurde.
+        let changed = modsconfig::modified(s["configDir"].as_str().unwrap_or_default());
+        cloud_prompt = paths::epic_cloud_synced_at(epic).zip(changed).is_some_and(|(synced, changed)| changed > synced);
         app.opener()
             .open_url(format!("com.epicgames.launcher://apps/{epic}?action=launch&silent=true"), None::<&str>)
             .map_err(|e| AppError::msg(e.to_string()))?;
@@ -725,7 +741,7 @@ async fn game_launch(app: AppHandle, core: CoreState<'_>) -> Res<bool> {
             .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
             .spawn()?;
     }
-    Ok(true)
+    Ok(json!({ "cloudPrompt": cloud_prompt }))
 }
 
 // ---------- Fensterrahmen (eigene Titelleiste, siehe bridge.js) ----------
@@ -790,8 +806,10 @@ fn main() {
                 app: app.handle().clone(),
                 scan: Mutex::new(Scan::default()),
                 asset_dirs: Mutex::new(HashSet::new()),
+                config_watcher: watch::ConfigWatcher::default(),
                 installer: Installer::default(),
             }));
+            app.state::<Arc<Core>>().watch_config();
 
             let handle = app.handle().clone();
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
