@@ -46,12 +46,7 @@ pub fn write_config(config_dir: &str, active: &[String], game_version_full: &str
         let mut bak = file.clone().into_os_string();
         bak.push(".bak");
         fs::copy(&file, bak)?;
-        let re = Regex::new(r"<activeMods>[\s\S]*?</activeMods>").unwrap();
-        if re.is_match(&xml) {
-            re.replace(&xml, NoExpand(&active_block)).into_owned()
-        } else {
-            xml.replacen("</ModsConfigData>", &format!("  {active_block}\n</ModsConfigData>"), 1)
-        }
+        update_config_xml(&xml, &active_block, game_version_full)
     } else {
         let known = installed_official
             .iter()
@@ -65,6 +60,21 @@ pub fn write_config(config_dir: &str, active: &[String], game_version_full: &str
         )
     };
     fs::write(file, xml)
+}
+
+// Version mitschreiben: RimWorld verwirft eine ModsConfig.xml aus einer anderen Hauptversion (z. B. 1.4) komplett.
+fn update_config_xml(xml: &str, active_block: &str, game_version_full: &str) -> String {
+    let re = Regex::new(r"<activeMods>[\s\S]*?</activeMods>|<activeMods\s*/>").unwrap();
+    let xml = if re.is_match(xml) {
+        re.replace(xml, NoExpand(active_block)).into_owned()
+    } else {
+        xml.replacen("</ModsConfigData>", &format!("  {active_block}\n</ModsConfigData>"), 1)
+    };
+    if game_version_full.is_empty() {
+        return xml;
+    }
+    let version = format!("<version>{}</version>", escape_xml(game_version_full));
+    Regex::new(r"<version>[^<]*</version>|<version\s*/>").unwrap().replace(&xml, NoExpand(&version)).into_owned()
 }
 
 // Topologische Sortierung: Constraints aus About.xml haben Vorrang, sonst bleibt die bisherige Reihenfolge.
@@ -238,4 +248,34 @@ pub fn analyze(active_ids: &[String], mods: &[Mod], short_version: &str) -> Valu
         }
     }
     Value::Object(issues)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::update_config_xml;
+
+    #[test]
+    fn replaces_active_mods_and_version() {
+        let active = "<activeMods>\n    <li>ludeon.rimworld</li>\n    <li>a.b</li>\n  </activeMods>";
+        let cases = [
+            (
+                "<ModsConfigData>\n  <version>1.4.3704 rev886</version>\n  <activeMods>\n    <li>ludeon.rimworld</li>\n  </activeMods>\n  <knownExpansions />\n</ModsConfigData>",
+                "1.6.4871 rev574",
+                format!("<ModsConfigData>\n  <version>1.6.4871 rev574</version>\n  {active}\n  <knownExpansions />\n</ModsConfigData>"),
+            ),
+            (
+                "<ModsConfigData>\n  <version />\n</ModsConfigData>",
+                "1.6.4871 rev574",
+                format!("<ModsConfigData>\n  <version>1.6.4871 rev574</version>\n  {active}\n</ModsConfigData>"),
+            ),
+            (
+                "<ModsConfigData>\n  <version>1.4.3704 rev886</version>\n  <activeMods />\n</ModsConfigData>",
+                "",
+                format!("<ModsConfigData>\n  <version>1.4.3704 rev886</version>\n  {active}\n</ModsConfigData>"),
+            ),
+        ];
+        for (xml, version, expected) in cases {
+            assert_eq!(update_config_xml(xml, active, version), expected, "{xml}");
+        }
+    }
 }
