@@ -127,6 +127,9 @@ window.I18N = (function () {
     'dlg.unsavedTitle': 'Unsaved load order',
     'dlg.unsavedText': 'Your load order changes have not been saved yet. Save and launch now?',
     'dlg.saveAndLaunch': 'Save & launch',
+    'dlg.newVersionTitle': 'New version available',
+    'dlg.newVersionText': 'Version {version} of RimWorld Mod Library is available. Download it from GitHub to get the latest features and fixes.',
+    'dlg.later': 'Later',
 
     // Ladereihenfolge
     'lo.title': 'Load order',
@@ -349,7 +352,6 @@ window.I18N = (function () {
     'toast.rescanned': 'Library rescanned',
     'toast.removed': '“{name}” removed',
     'toast.launching': 'Starting RimWorld …',
-    'toast.newVersion': 'Version {version} of RimWorld Mod Library is available. Click here to download it.',
     'toast.epicCloud': 'Your mod list changed since Epic last synced your cloud saves. If Epic asks which data to keep, choose to upload the local data, otherwise your mod changes will be lost.',
     'toast.noExe': 'No RimWorldWin64.exe was found in this folder',
     'toast.cacheCleared': 'Cache cleared',
@@ -498,6 +500,9 @@ window.I18N = (function () {
     'dlg.unsavedTitle': 'Ungespeicherte Ladereihenfolge',
     'dlg.unsavedText': 'Die Änderungen an der Ladereihenfolge sind noch nicht gespeichert. Jetzt speichern und starten?',
     'dlg.saveAndLaunch': 'Speichern & starten',
+    'dlg.newVersionTitle': 'Neue Version verfügbar',
+    'dlg.newVersionText': 'Version {version} von RimWorld Mod Library ist verfügbar. Lade sie von GitHub herunter, um die neuesten Funktionen und Fehlerbehebungen zu bekommen.',
+    'dlg.later': 'Später',
 
     'lo.title': 'Ladereihenfolge',
     'lo.subtitle': 'Ziehe Mods per Drag & Drop. Bibliotheken wie Harmony gehören nach oben.',
@@ -709,7 +714,6 @@ window.I18N = (function () {
     'toast.rescanned': 'Bibliothek neu eingelesen',
     'toast.removed': '„{name}“ entfernt',
     'toast.launching': 'RimWorld wird gestartet …',
-    'toast.newVersion': 'Version {version} von RimWorld Mod Library ist verfügbar. Klicke hier, um sie herunterzuladen.',
     'toast.epicCloud': 'Deine Mod-Liste hat sich seit dem letzten Cloud-Abgleich von Epic geändert. Wenn Epic fragt, welche Daten behalten werden sollen, wähle die lokalen Daten zum Hochladen, sonst gehen deine Mod-Änderungen verloren.',
     'toast.noExe': 'In diesem Ordner wurde keine RimWorldWin64.exe gefunden',
     'toast.cacheCleared': 'Cache geleert',

@@ -272,7 +272,7 @@ Epic's cloud saves include RimWorld's <code>Config</code> folder, and with it th
 <details>
 <summary><b>How do I know when there's a new version?</b></summary>
 <br/>
-The app checks GitHub for a newer release every time it starts. If there is one, a short notice appears in the bottom right corner and a <b>New</b> badge next to <b>About</b> in the sidebar. Click the notice or open <b>About</b> to download the update.
+The app checks GitHub for a newer release every time it starts. If there is one, a window pops up with a <b>Download</b> button that opens the release on GitHub, and a <b>New</b> badge appears next to <b>About</b> in the sidebar. Choose <b>Later</b> to close the window, the update stays available on the <b>About</b> page.
 </details>
 
 <details>

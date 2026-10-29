@@ -496,7 +496,7 @@ svg.lucide { width: 18px; height: 18px; stroke-width: 2; flex-shrink: 0; }
   overflow: hidden; transform: translateY(10px); transition: transform 0.2s;
 }
 .modal-backdrop.open .modal { transform: none; }
-.modal.small { width: min(520px, 100%); }
+.modal.small { width: min(520px, 100%); margin: auto 0; } /* kleine Dialoge vertikal mittig */
 
 .detail-hero { position: relative; aspect-ratio: 16 / 7; max-height: 340px; width: 100%; background: var(--card-img-bg); overflow: hidden; }
 .detail-hero img.bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: blur(24px) brightness(0.55); transform: scale(1.2); }
@@ -574,8 +574,6 @@ svg.lucide { width: 18px; height: 18px; stroke-width: 2; flex-shrink: 0; }
 .toast.success svg.lucide { color: var(--ok); }
 .toast.warning svg.lucide { color: var(--warn); }
 .toast.error svg.lucide { color: var(--err); }
-.toast.clickable { cursor: pointer; }
-.toast.clickable:hover { border-color: var(--accent); }
 @keyframes toastIn { from { transform: translateY(10px); opacity: 0; } }
 
 /* About */
