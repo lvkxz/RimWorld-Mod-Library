@@ -53,7 +53,7 @@ The Steam Workshop is where nearly all RimWorld mods live, but it only works wit
   <tr>
     <td width="50%" valign="top">
       <h3>📚 Library</h3>
-      All installed mods with preview images, authors and supported versions. Turn mods on and off with a single switch, filter by status and spot problems right away.
+      All installed mods with preview images, authors and supported versions. Turn mods on and off with a single switch, filter by status and spot problems right away. Changes you make in RimWorld's own mod menu show up instantly.
     </td>
     <td width="50%" valign="top">
       <h3>🔎 Workshop browser</h3>
@@ -261,6 +261,12 @@ Large mods sometimes time out on Steam's side. The app retries automatically up 
 <summary><b>A mod shows a red warning sign.</b></summary>
 <br/>
 Open the mod, because the details explain the problem. Usually a dependency is missing or loads in the wrong order. Missing dependencies can be installed with one click, and <b>Auto-sort</b> fixes the order.
+</details>
+
+<details>
+<summary><b>Epic asks whether to upload or download my cloud saves when I start the game.</b></summary>
+<br/>
+Epic's cloud saves include RimWorld's <code>Config</code> folder, and with it the mod list. When you change your mods in the app, Epic notices the difference on the next start and asks which data to keep. Choose to <b>upload the local data</b>. Downloading restores the old cloud state and undoes your mod changes. The app shows a reminder when you click <b>Play</b> and this is about to happen.
 </details>
 
 <details>
