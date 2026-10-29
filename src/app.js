@@ -75,11 +75,18 @@ function updateGameMeta() {
     : t('game.notFound');
 }
 
-function toast(text, type = 'info', ms = type === 'error' ? 7000 : 4200) {
+function toast(text, type = 'info', ms = type === 'error' ? 7000 : 4200, onClick = null) {
   const icons = { info: 'info', success: 'circle-check-big', warning: 'triangle-alert', error: 'circle-alert' };
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.innerHTML = `${icon(icons[type] || 'info')}<span>${h(text)}</span>`;
+  if (onClick) {
+    el.classList.add('clickable');
+    el.addEventListener('click', () => {
+      el.remove();
+      onClick();
+    });
+  }
   $('#toasts').appendChild(el);
   refreshIcons();
   setTimeout(() => el.remove(), ms);
@@ -1293,7 +1300,7 @@ async function loadAbout() {
   if (state.view === 'about') rerenderKeepScroll();
 }
 
-async function checkRelease() {
+async function checkRelease(notify = false) {
   state.release = { state: 'checking' };
   if (state.view === 'about') rerenderKeepScroll();
   try {
@@ -1302,6 +1309,10 @@ async function checkRelease() {
     state.release = { state: 'error', error: e.message };
   }
   updateBadges();
+  // Beim Start zusätzlich zum Badge kurz auf eine neue Version hinweisen; Klick öffnet die About-Seite.
+  if (notify && state.release.state === 'update') {
+    toast(t('toast.newVersion', { version: state.release.latest }), 'info', 10000, () => setView('about'));
+  }
   if (state.view === 'about') rerenderKeepScroll();
 }
 
@@ -1629,5 +1640,5 @@ window.api.on('library:changed', async () => {
   state.queue = await window.api.queue();
   updateBadges();
   if (state.ctx.gameFound) checkUpdates(true);
-  checkRelease();
+  checkRelease(true);
 })();

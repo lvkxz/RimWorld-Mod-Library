@@ -574,6 +574,8 @@ svg.lucide { width: 18px; height: 18px; stroke-width: 2; flex-shrink: 0; }
 .toast.success svg.lucide { color: var(--ok); }
 .toast.warning svg.lucide { color: var(--warn); }
 .toast.error svg.lucide { color: var(--err); }
+.toast.clickable { cursor: pointer; }
+.toast.clickable:hover { border-color: var(--accent); }
 @keyframes toastIn { from { transform: translateY(10px); opacity: 0; } }
 
 /* About */
