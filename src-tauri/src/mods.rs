@@ -32,7 +32,7 @@ fn known_workshop_id(package_id: &str) -> Option<&'static str> {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Dependency {
     pub package_id: String,
@@ -40,7 +40,7 @@ pub struct Dependency {
     pub workshop_id: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Mod {
     pub key: String,
@@ -80,7 +80,7 @@ fn list(node: Option<&Value>) -> Vec<Value> {
     }
 }
 
-fn strings(node: Option<&Value>) -> Vec<String> {
+pub fn strings(node: Option<&Value>) -> Vec<String> {
     list(node)
         .iter()
         .map(|v| match v {

@@ -3,6 +3,7 @@
 
 mod installer;
 mod mods;
+mod modlists;
 mod modsconfig;
 mod paths;
 mod steamcmd;
@@ -69,7 +70,9 @@ pub struct Core {
     app: AppHandle,
     scan: Mutex<Scan>,
     asset_dirs: Mutex<HashSet<String>>,
-    config_watcher: watch::ConfigWatcher,
+    config_watcher: watch::DirWatcher,
+    lists_watcher: watch::DirWatcher,
+    pending_list: Mutex<Option<PendingList>>,
     pub installer: Installer,
 }
 
@@ -81,7 +84,11 @@ impl Core {
     /// Änderungen an ModsConfig.xml von außen (Spiel) live an die Oberfläche melden.
     fn watch_config(&self) {
         let s = resolve_paths(&settings::get());
-        self.config_watcher.watch(&self.app, s["configDir"].as_str().unwrap_or_default());
+        let config_dir = s["configDir"].as_str().unwrap_or_default();
+        self.config_watcher.watch(&self.app, config_dir);
+        if !config_dir.is_empty() {
+            self.lists_watcher.watch(&self.app, &modlists::dir(config_dir).to_string_lossy());
+        }
     }
 
     /// Einstellungen mit aufgelösten Pfaden und Spielversion.
@@ -237,7 +244,9 @@ impl Core {
     pub async fn on_batch_done(self: &Arc<Self>, done: Vec<Task>) {
         self.scan();
         let to_activate: Vec<&Task> = done.iter().filter(|t| t.activate).collect();
-        if !to_activate.is_empty() && settings::flag("autoActivate") {
+        if done.is_empty() {
+            // Nur eine wartende Mod-Liste abschließen (Downloads dafür fehlgeschlagen).
+        } else if !to_activate.is_empty() && settings::flag("autoActivate") {
             let result: Res<usize> = async {
                 let (s, version) = self.ctx();
                 let short = version["short"].as_str().unwrap_or_default();
@@ -259,8 +268,48 @@ impl Core {
         } else {
             self.send("toast", json!({ "type": "success", "text": tp("toast.installed", json!({ "n": done.len() })) }));
         }
+        self.apply_pending_list().await;
         self.send("library:changed", Value::Null);
     }
+
+    pub fn has_pending_list(&self) -> bool {
+        self.pending_list.lock().unwrap().is_some()
+    }
+
+    /// Setzt eine geladene Mod-Liste, sobald keine Downloads mehr laufen. Gewartet wird auf die ganze Warteschlange,
+    /// weil nach einem Download noch Abhängigkeiten aus der About.xml nachkommen können.
+    async fn apply_pending_list(&self) {
+        if self.installer.list().iter().any(|t| t.busy()) {
+            return;
+        }
+        let pending = self.pending_list.lock().unwrap().take();
+        let Some(p) = pending else { return };
+        match self.activate_list(&p.name, p.entries).await {
+            Ok(0) => self.send("toast", json!({ "type": "success", "text": tp("toast.listLoaded", json!({ "name": p.name })) })),
+            Ok(missing) => self.send("toast", json!({ "type": "warning", "text": tp("toast.listLoadedMissing", json!({ "name": p.name, "n": missing })) })),
+            Err(e) => self.send("toast", json!({ "type": "error", "text": e.0 })),
+        }
+    }
+
+    /// Aktiviert die installierten Mods einer Liste in ihrer Reihenfolge, ergänzt um fehlende Pflicht-Abhängigkeiten;
+    /// liefert die Zahl der fehlenden Mods. Platzhalter frisch installierter Workshop-Mods werden in der Listen-Datei
+    /// durch die echte packageId ersetzt.
+    async fn activate_list(&self, name: &str, mut entries: Vec<modlists::Entry>) -> Res<usize> {
+        let mods = self.mods();
+        let order: Vec<String> = entries.iter().filter_map(|e| modlists::find(e, &mods)).map(|m| m.package_id.clone()).collect();
+        let missing = entries.len() - order.len();
+        self.save_active(modlists::with_dependencies(&order, &mods).0, false).await?;
+        if modlists::resolve_placeholders(&mut entries, &mods) {
+            let (s, version) = self.ctx();
+            let _ = modlists::write(s["configDir"].as_str().unwrap_or_default(), name, &entries, version["full"].as_str().unwrap_or_default());
+        }
+        Ok(missing)
+    }
+}
+
+struct PendingList {
+    name: String,
+    entries: Vec<modlists::Entry>,
 }
 
 fn by_package(mods: &[Mod]) -> HashMap<String, &Mod> {
@@ -718,8 +767,9 @@ async fn game_launch(app: AppHandle, core: CoreState<'_>) -> Res<Value> {
     let epic = s["epicAppName"].as_str().unwrap_or_default();
     let mut cloud_prompt = false;
     if s["launchVia"] == "epic" && !epic.is_empty() {
-        // Epic fragt nach dem Cloud-Stand, wenn ModsConfig.xml seit dem letzten Abgleich außerhalb des Spiels geändert wurde.
-        let changed = modsconfig::modified(s["configDir"].as_str().unwrap_or_default());
+        // Epic fragt nach dem Cloud-Stand, wenn ModsConfig.xml oder Mod-Listen seit dem letzten Abgleich außerhalb des Spiels geändert wurden.
+        let config_dir = s["configDir"].as_str().unwrap_or_default();
+        let changed = modsconfig::modified(config_dir).max(modlists::last_change(config_dir));
         cloud_prompt = paths::epic_cloud_synced_at(epic).zip(changed).is_some_and(|(synced, changed)| changed > synced);
         app.opener()
             .open_url(format!("com.epicgames.launcher://apps/{epic}?action=launch&silent=true"), None::<&str>)
@@ -742,6 +792,273 @@ async fn game_launch(app: AppHandle, core: CoreState<'_>) -> Res<Value> {
             .spawn()?;
     }
     Ok(json!({ "cloudPrompt": cloud_prompt }))
+}
+
+// ---------- Mod-Listen (siehe modlists.rs) ----------
+
+fn config_dir_of(core: &Core) -> String {
+    core.ctx().0["configDir"].as_str().unwrap_or_default().to_string()
+}
+
+fn modlist_or_err(config_dir: &str, name: &str) -> Res<modlists::ModList> {
+    modlists::get(config_dir, name).ok_or_else(|| AppError::tr("err.listNotFound"))
+}
+
+fn check_list_name(config_dir: &str, name: &str) -> Res<String> {
+    let name = name.trim();
+    if !modlists::valid_name(name) {
+        return Err(AppError::tr("err.listName"));
+    }
+    if modlists::exists(config_dir, name) {
+        return Err(AppError::trp("err.listExists", json!({ "name": name })));
+    }
+    Ok(name.to_string())
+}
+
+/// Workshop-Titel für Einträge ohne Namen (z. B. aus einem geteilten Code); ohne Netz bleibt die ID stehen.
+async fn fill_names(entries: &mut [modlists::Entry], mods: &[Mod]) {
+    let ids: Vec<String> = entries.iter().filter(|e| e.name.is_empty() && !e.workshop_id.is_empty()).map(|e| e.workshop_id.clone()).collect();
+    let info = if ids.is_empty() { vec![] } else { workshop::details(&ids).await.unwrap_or_default() };
+    for e in entries.iter_mut().filter(|e| e.name.is_empty()) {
+        let title = info.iter().find(|x| x["id"] == json!(e.workshop_id)).map(|x| js_string(&x["title"]));
+        e.name = modlists::find(e, mods)
+            .map(|m| m.name.clone())
+            .or(title.filter(|t| !t.is_empty()))
+            .unwrap_or_else(|| if e.package_id.is_empty() { e.workshop_id.clone() } else { e.package_id.clone() });
+    }
+}
+
+#[tauri::command]
+async fn modlists_get(core: CoreState<'_>) -> Res<Value> {
+    core.ensure_scanned();
+    let config_dir = config_dir_of(&core);
+    let mods = core.mods();
+    let active = modsconfig::read_config(&config_dir).active;
+    let lists: Vec<Value> = modlists::all(&config_dir)
+        .iter()
+        .map(|list| {
+            let found: Vec<Option<&Mod>> = list.mods.iter().map(|e| modlists::find(e, &mods)).collect();
+            let missing: Vec<&modlists::Entry> = list.mods.iter().zip(&found).filter(|(_, m)| m.is_none()).map(|(e, _)| e).collect();
+            let ids: Vec<&String> = found.iter().flatten().map(|m| &m.package_id).collect();
+            json!({
+                "name": list.name,
+                "path": list.path,
+                "modified": list.modified,
+                "count": list.mods.len(),
+                "missing": missing.len(),
+                "installable": missing.iter().filter(|e| !e.workshop_id.is_empty()).count(),
+                "active": missing.is_empty() && ids.len() == active.len() && ids.iter().zip(&active).all(|(a, b)| *a == b),
+                "names": list.mods.iter().map(|e| if e.name.is_empty() { &e.package_id } else { &e.name }).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    Ok(json!({ "dir": modlists::dir(&config_dir), "lists": lists }))
+}
+
+/// Speichert die aktiven Mods (Reihenfolge aus ModsConfig.xml) als Liste.
+#[tauri::command]
+async fn modlist_save(core: CoreState<'_>, name: String, overwrite: bool) -> Res<Value> {
+    core.ensure_scanned();
+    let (s, version) = core.ctx();
+    let config_dir = s["configDir"].as_str().unwrap_or_default();
+    let name = if overwrite && modlists::exists(config_dir, name.trim()) { name.trim().to_string() } else { check_list_name(config_dir, &name)? };
+    let mods = core.mods();
+    let pkgs = by_package(&mods);
+    let entries: Vec<modlists::Entry> = modsconfig::read_config(config_dir)
+        .active
+        .iter()
+        .map(|id| pkgs.get(id).map(|m| modlists::entry_for(m)).unwrap_or(modlists::Entry { package_id: id.clone(), name: id.clone(), ..Default::default() }))
+        .collect();
+    modlists::write(config_dir, &name, &entries, version["full"].as_str().unwrap_or_default())?;
+    core.watch_config(); // Listen-Ordner kann eben erst angelegt worden sein
+    Ok(json!({ "name": name }))
+}
+
+#[tauri::command]
+async fn modlist_rename(core: CoreState<'_>, name: String, new_name: String) -> Res<Value> {
+    let config_dir = config_dir_of(&core);
+    modlist_or_err(&config_dir, &name)?;
+    if new_name.trim() == name {
+        return Ok(json!({ "name": name }));
+    }
+    let new_name = check_list_name(&config_dir, &new_name)?;
+    modlists::rename(&config_dir, &name, &new_name)?;
+    Ok(json!({ "name": new_name }))
+}
+
+#[tauri::command]
+async fn modlist_delete(core: CoreState<'_>, name: String) -> Res<Value> {
+    let config_dir = config_dir_of(&core);
+    modlist_or_err(&config_dir, &name)?;
+    modlists::delete(&config_dir, &name)?;
+    Ok(Value::Null)
+}
+
+#[tauri::command]
+async fn modlist_code(core: CoreState<'_>, name: String) -> Res<String> {
+    let config_dir = config_dir_of(&core);
+    let list = modlist_or_err(&config_dir, &name)?;
+    Ok(modlists::encode(&list.name, &list.mods))
+}
+
+/// Legt eine Liste aus einem geteilten Code oder einer .rml-Datei an (bei gleichem Namen mit Zusatz "(2)").
+#[tauri::command]
+async fn modlist_import(app: AppHandle, core: CoreState<'_>, code: Option<String>) -> Res<Value> {
+    core.ensure_scanned();
+    let (s, version) = core.ctx();
+    let config_dir = s["configDir"].as_str().unwrap_or_default();
+    let (name, mut entries) = match code {
+        Some(code) => modlists::decode(&code).ok_or_else(|| AppError::tr("err.listCode"))?,
+        None => {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let mut dialog = app.dialog().file().add_filter("RimWorld mod list", &["rml"]);
+            if let Some(win) = app.get_webview_window("main") {
+                dialog = dialog.set_parent(&win);
+            }
+            dialog.pick_file(move |p| {
+                let _ = tx.send(p);
+            });
+            let Some(path) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(Value::Null) };
+            let entries = fs_read(&path).and_then(|text| modlists::parse(&text)).ok_or_else(|| AppError::tr("err.listFile"))?;
+            (path.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), entries)
+        }
+    };
+    // Bereits installierte Mods mit allen Angaben übernehmen (ein Code enthält nur Workshop-ID oder packageId).
+    let mods = core.mods();
+    for e in entries.iter_mut() {
+        if let Some(m) = modlists::find(e, &mods) {
+            *e = modlists::entry_for(m);
+        }
+    }
+    fill_names(&mut entries, &mods).await;
+    let name = modlists::unique_name(config_dir, &name);
+    modlists::write(config_dir, &name, &entries, version["full"].as_str().unwrap_or_default())?;
+    core.watch_config();
+    Ok(json!({ "name": name }))
+}
+
+/// Legt eine Liste aus einer Workshop-Collection an: Core zuerst, dann die Mods in der Reihenfolge der Collection.
+#[tauri::command]
+async fn modlist_from_collection(core: CoreState<'_>, name: String, items: Vec<Value>, overwrite: bool) -> Res<Value> {
+    core.ensure_scanned();
+    let (s, version) = core.ctx();
+    let config_dir = s["configDir"].as_str().unwrap_or_default();
+    let name = if overwrite && modlists::exists(config_dir, name.trim()) { name.trim().to_string() } else { check_list_name(config_dir, &name)? };
+    let mods = core.mods();
+    let core_entry = modlists::Entry { package_id: modsconfig::CORE.into(), name: "Core".into(), ..Default::default() };
+    let mut entries = vec![modlists::find(&core_entry, &mods).map(modlists::entry_for).unwrap_or(core_entry)];
+    for item in &items {
+        let entry = modlists::Entry { workshop_id: js_string(&item["id"]), name: js_string(&item["title"]), ..Default::default() };
+        if !entry.workshop_id.is_empty() {
+            entries.push(modlists::find(&entry, &mods).map(modlists::entry_for).unwrap_or(entry));
+        }
+    }
+    modlists::write(config_dir, &name, &entries, version["full"].as_str().unwrap_or_default())?;
+    core.watch_config();
+    Ok(json!({ "name": name }))
+}
+
+fn fs_read(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path).ok()
+}
+
+/// Was beim Laden einer Liste passiert: welche Mods aktiviert, deaktiviert, installiert werden oder fehlen.
+#[tauri::command]
+async fn modlist_preview(core: CoreState<'_>, name: String) -> Res<Value> {
+    core.ensure_scanned();
+    let config_dir = config_dir_of(&core);
+    let mut list = modlist_or_err(&config_dir, &name)?;
+    let mods = core.mods();
+    fill_names(&mut list.mods, &mods).await;
+    let active = modsconfig::read_config(&config_dir).active;
+    let entries: Vec<Value> = list
+        .mods
+        .iter()
+        .map(|e| {
+            let m = modlists::find(e, &mods);
+            let state = match m {
+                Some(m) if active.contains(&m.package_id) => "active",
+                Some(_) => "activate",
+                None if !e.workshop_id.is_empty() => "install",
+                None => "missing",
+            };
+            json!({ "name": m.map_or(&e.name, |m| &m.name), "packageId": m.map_or(&e.package_id, |m| &m.package_id), "workshopId": e.workshop_id, "state": state })
+        })
+        .collect();
+    let plan = plan_list(&core, &list.mods, &mods).await;
+    let in_list: HashSet<&str> = list.mods.iter().filter_map(|e| modlists::find(e, &mods)).map(|m| m.package_id.as_str()).collect();
+    let pkgs = by_package(&mods);
+    let deactivate: Vec<&str> = active
+        .iter()
+        .filter(|id| !in_list.contains(id.as_str()) && !plan.added.contains(*id))
+        .map(|id| pkgs.get(id).map_or(id.as_str(), |m| m.name.as_str()))
+        .collect();
+    Ok(json!({ "name": list.name, "mods": entries, "deactivate": deactivate, "deps": plan.deps }))
+}
+
+struct ListPlan {
+    install: Vec<String>, // Workshop-IDs: fehlende Mods der Liste und fehlende Abhängigkeiten
+    added: Vec<String>,   // installierte Abhängigkeiten, die nicht in der Liste stehen
+    deps: Vec<Value>,     // für die Vorschau: { name, state: "activate" | "install" }
+}
+
+/// Was beim Laden einer Liste installiert und an Abhängigkeiten ergänzt wird. Abhängigkeiten noch nicht installierter
+/// Mods kommen von ihren Workshop-Seiten (wie beim normalen Installieren).
+async fn plan_list(core: &Core, entries: &[modlists::Entry], mods: &[Mod]) -> ListPlan {
+    let pkgs = by_package(mods);
+    let order: Vec<String> = entries.iter().filter_map(|e| modlists::find(e, mods)).map(|m| m.package_id.clone()).collect();
+    let (_, added) = modlists::with_dependencies(&order, mods);
+    let mut deps: Vec<Value> = added.iter().map(|id| json!({ "name": pkgs.get(id).map_or(id.as_str(), |m| m.name.as_str()), "state": "activate" })).collect();
+
+    let list_installs: Vec<String> = entries.iter().filter(|e| modlists::find(e, mods).is_none() && !e.workshop_id.is_empty()).map(|e| e.workshop_id.clone()).collect();
+    let mut dep_names = HashMap::new();
+    for d in order.iter().chain(&added).filter_map(|id| pkgs.get(id)).flat_map(|m| &m.dependencies) {
+        if !pkgs.contains_key(&d.package_id) && !d.workshop_id.is_empty() {
+            dep_names.insert(d.workshop_id.clone(), d.display_name.clone());
+        }
+    }
+    let roots = util::unique(list_installs.iter().chain(dep_names.keys()).cloned());
+    if roots.is_empty() {
+        return ListPlan { install: vec![], added, deps };
+    }
+    core.send("status", t("status.checkingDeps"));
+    let installed: HashSet<String> = mods.iter().filter(|m| !m.workshop_id.is_empty()).map(|m| m.workshop_id.clone()).collect();
+    let check = move |id: &str| installed.contains(id);
+    let (install, names) = workshop::resolve_dependencies(&roots, &check).await;
+    core.send("status", json!(""));
+    for id in install.iter().filter(|id| !list_installs.contains(id)) {
+        let name = dep_names.get(id).cloned().or_else(|| names.get(id).map(js_string)).filter(|n| !n.is_empty()).unwrap_or_else(|| id.clone());
+        deps.push(json!({ "name": name, "state": "install" }));
+    }
+    ListPlan { install, added, deps }
+}
+
+/// Lädt eine Liste: fehlende Mods aus dem Workshop installieren, danach genau diese Mods in dieser Reihenfolge aktivieren.
+#[tauri::command]
+async fn modlist_apply(core: CoreState<'_>, name: String) -> Res<Value> {
+    core.ensure_scanned();
+    let config_dir = config_dir_of(&core);
+    let list = modlist_or_err(&config_dir, &name)?;
+    if is_game_running().await {
+        return Err(AppError::tr("err.gameRunning"));
+    }
+    let mods = core.mods();
+    let install = plan_list(&core, &list.mods, &mods).await.install;
+    if install.is_empty() {
+        let missing = core.activate_list(&list.name, list.mods).await?;
+        return Ok(json!({ "installing": 0, "missing": missing }));
+    }
+    let info = workshop::details(&install).await?;
+    let items: Vec<Task> = install
+        .iter()
+        .map(|id| {
+            let i = info.iter().find(|x| x["id"] == json!(id)).cloned().unwrap_or(json!({}));
+            task_from_info(id, &i, None, false, false, false)
+        })
+        .collect();
+    core.installer.enqueue(core.inner(), items); // erst danach vormerken: die Downloads müssen schon in der Warteschlange stehen
+    *core.pending_list.lock().unwrap() = Some(PendingList { name: list.name, entries: list.mods });
+    Ok(json!({ "installing": install.len(), "missing": 0 }))
 }
 
 // ---------- Fensterrahmen (eigene Titelleiste, siehe bridge.js) ----------
@@ -806,7 +1123,9 @@ fn main() {
                 app: app.handle().clone(),
                 scan: Mutex::new(Scan::default()),
                 asset_dirs: Mutex::new(HashSet::new()),
-                config_watcher: watch::ConfigWatcher::default(),
+                config_watcher: watch::DirWatcher::new("library:changed", Some("ModsConfig.xml"), modsconfig::is_own_write),
+                lists_watcher: watch::DirWatcher::new("modlists:changed", None, |_| false),
+                pending_list: Mutex::new(None),
                 installer: Installer::default(),
             }));
             app.state::<Arc<Core>>().watch_config();
@@ -871,6 +1190,15 @@ fn main() {
             steamcmd_ensure,
             steamcmd_clear_cache,
             game_launch,
+            modlists_get,
+            modlist_save,
+            modlist_rename,
+            modlist_delete,
+            modlist_code,
+            modlist_import,
+            modlist_preview,
+            modlist_apply,
+            modlist_from_collection,
             win_snap_overlay,
             win_system_menu
         ])

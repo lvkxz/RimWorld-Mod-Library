@@ -110,6 +110,7 @@ The Steam Workshop is where nearly all RimWorld mods live, but it only works wit
 
 **Also included:**
 
+- 📋 **Mod lists**: save your active mods or a Workshop collection as named lists, switch between them and share them as a short code or file. Missing Workshop mods and required dependencies are added when you load a list. Lists use RimWorld's own format, so they also show up in the game's mod menu
 - ▶️ **Play button** that starts RimWorld through the Epic Games Launcher or directly
 - 🔍 **Global search** with <kbd>Ctrl</kbd> + <kbd>K</kbd>
 - 🗑️ **Safe uninstall**: removed mods go to the Recycle Bin

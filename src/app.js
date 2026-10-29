@@ -22,6 +22,7 @@ const state = {
   collSelected: new Set(),
   collLoading: false,
   collInput: '',
+  lists: null,       // { dir, lists: [{ name, path, modified, count, missing, installable, active, names }] }
   status: '',
   about: null,
   release: null      // { state: 'checking'|'current'|'update'|'none'|'error', latest?, url?, error? }
@@ -96,7 +97,7 @@ async function safe(fn) {
 // ====================================================================
 // Dialoge
 // ====================================================================
-function confirmDialog({ title, text, list = [], ok = t('common.ok'), cancel = t('common.cancel'), danger = false, iconName = 'circle-alert' }) {
+function confirmDialog({ title, text, list = [], html = '', ok = t('common.ok'), cancel = t('common.cancel'), danger = false, iconName = 'circle-alert' }) {
   return new Promise((resolve) => {
     const modal = $('#modal');
     modal.className = 'modal small';
@@ -105,6 +106,7 @@ function confirmDialog({ title, text, list = [], ok = t('common.ok'), cancel = t
         <h3>${icon(iconName)}${h(title)}</h3>
         ${text ? `<p>${h(text)}</p>` : ''}
         ${list.length ? `<ul>${list.map((x) => `<li>${h(x)}</li>`).join('')}</ul>` : ''}
+        ${html}
       </div>
       <div class="confirm-actions">
         <button class="btn" data-r="0">${h(cancel)}</button>
@@ -120,6 +122,49 @@ function confirmDialog({ title, text, list = [], ok = t('common.ok'), cancel = t
       })
     );
     state.modalResolve = () => resolve(false);
+  });
+}
+
+// Eingabe-Dialog: liefert den Text, null bei Abbruch oder { extra: true } für den optionalen dritten Knopf.
+function promptDialog({ title, text = '', value = '', placeholder = '', ok, iconName = 'pencil', multiline = false, extra = null }) {
+  return new Promise((resolve) => {
+    const modal = $('#modal');
+    modal.className = 'modal small';
+    const field = multiline
+      ? `<textarea class="input dialog-input multiline" id="dlgInput" placeholder="${h(placeholder)}" spellcheck="false">${h(value)}</textarea>`
+      : `<input class="input dialog-input" id="dlgInput" placeholder="${h(placeholder)}" value="${h(value)}" maxlength="80">`;
+    modal.innerHTML = `
+      <div class="confirm-body">
+        <h3>${icon(iconName)}${h(title)}</h3>
+        ${text ? `<p>${h(text)}</p>` : ''}
+        ${field}
+      </div>
+      <div class="confirm-actions">
+        ${extra ? `<button class="btn btn-ghost dialog-extra" data-r="extra">${icon(extra.icon)}${h(extra.label)}</button>` : ''}
+        <button class="btn" data-r="0">${h(t('common.cancel'))}</button>
+        <button class="btn btn-primary" data-r="1">${h(ok)}</button>
+      </div>`;
+    openModal();
+    refreshIcons();
+    const input = $('#dlgInput');
+    input.focus();
+    input.select();
+    const done = (result) => {
+      state.modalResolve = null;
+      closeModal();
+      resolve(result);
+    };
+    const entered = () => input.value.trim() || null;
+    modal.querySelectorAll('[data-r]').forEach((b) =>
+      b.addEventListener('click', () => done(b.dataset.r === '1' ? entered() : b.dataset.r === 'extra' ? { extra: true } : null))
+    );
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !multiline) {
+        e.preventDefault();
+        done(entered());
+      }
+    });
+    state.modalResolve = () => resolve(null);
   });
 }
 
@@ -205,10 +250,11 @@ function setView(view) {
   document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   content().scrollTop = 0;
   render();
+  if (view === 'modlists') loadLists();
 }
 
 function render() {
-  const views = { library: viewLibrary, loadorder: viewLoadOrder, workshop: viewWorkshop, suggestions: viewSuggestions, updates: viewUpdates, collections: viewCollections, downloads: viewDownloads, settings: viewSettings, about: viewAbout };
+  const views = { library: viewLibrary, loadorder: viewLoadOrder, modlists: viewModLists, workshop: viewWorkshop, suggestions: viewSuggestions, updates: viewUpdates, collections: viewCollections, downloads: viewDownloads, settings: viewSettings, about: viewAbout };
   content().innerHTML = (views[state.view] || viewLibrary)();
   refreshIcons();
   afterRender[state.view]?.();
@@ -1005,6 +1051,91 @@ function viewUpdates() {
 }
 
 // ====================================================================
+// Ansicht: Mod-Listen
+// ====================================================================
+function viewModLists() {
+  const data = state.lists;
+  const head = `
+    <div class="view-head">
+      <div><h1>${icon('list-checks')}${t('nav.modLists')}</h1><p>${t('ml.subtitle')}</p></div>
+      <div class="view-actions">
+        ${data?.lists.length ? `<button class="btn" data-action="openPath" data-path="${h(data.dir)}">${icon('folder-open')}${t('ml.folder')}</button>` : ''}
+        <button class="btn" data-action="mlImport">${icon('import')}${t('ml.import')}</button>
+        <button class="btn btn-primary" data-action="mlSave">${icon('save')}${t('ml.saveCurrent')}</button>
+      </div>
+    </div>`;
+  if (!data) return `${head}<div class="empty">${icon('loader-circle', 'spin')}<p>${t('ml.loading')}</p></div>`;
+  if (!data.lists.length) return `${head}<div class="empty">${icon('list-checks')}<h3>${t('ml.emptyTitle')}</h3><p>${t('ml.emptyText')}</p></div>`;
+  const rows = data.lists.map((l) => `
+    <div class="row ml-row">
+      <div class="ml-icon ${l.active ? 'active' : ''}">${icon(l.active ? 'circle-check-big' : 'list-checks')}</div>
+      <div class="row-main">
+        <div class="row-title">${h(l.name)}</div>
+        <div class="row-sub">${h(t('ml.row', { n: l.count, date: fmtDate(l.modified / 1000) }))}</div>
+        <div class="ml-names">${h(l.names.slice(0, 10).join(' · '))}${l.names.length > 10 ? ' …' : ''}</div>
+      </div>
+      <div class="row-chips">
+        ${l.active ? `<span class="chip chip-ok">${icon('check')}${t('ml.active')}</span>` : ''}
+        ${l.missing ? `<span class="chip chip-warn" title="${h(t('ml.missingHint'))}">${icon('download')}${h(t('ml.missing', { n: l.missing }))}</span>` : ''}
+      </div>
+      <div class="ml-actions">
+        <button class="btn btn-sm ${l.active ? '' : 'btn-primary'}" data-action="mlLoad" data-name="${h(l.name)}" ${l.active ? 'disabled' : ''}>${icon('play')}${t('ml.load')}</button>
+        <button class="btn btn-sm btn-icon" data-action="mlCopy" data-name="${h(l.name)}" title="${h(t('ml.copyCode'))}">${icon('share-2')}</button>
+        <button class="btn btn-sm btn-icon" data-action="mlOverwrite" data-name="${h(l.name)}" title="${h(t('ml.overwrite'))}">${icon('refresh-cw')}</button>
+        <button class="btn btn-sm btn-icon" data-action="mlRename" data-name="${h(l.name)}" title="${h(t('ml.rename'))}">${icon('pencil')}</button>
+        <button class="btn btn-sm btn-icon btn-danger" data-action="mlDelete" data-name="${h(l.name)}" title="${h(t('ml.delete'))}">${icon('trash-2')}</button>
+      </div>
+    </div>`).join('');
+  return `${head}<div class="list">${rows}</div><p class="card-sub ml-note">${t('ml.note')}</p>`;
+}
+
+async function loadLists() {
+  const res = await safe(() => window.api.modLists());
+  if (res) state.lists = res;
+  if (state.view === 'modlists') rerenderKeepScroll();
+}
+
+// Vorschau vor dem Laden einer Liste: was aktiviert, installiert, deaktiviert oder übersprungen wird.
+function listPreviewDialog(p) {
+  const names = (st) => p.mods.filter((m) => m.state === st).map((m) => m.name);
+  const [activate, install, missing] = ['activate', 'install', 'missing'].map(names);
+  const deps = p.deps.map((d) => (d.state === 'install' ? `${d.name} (${t('ml.download')})` : d.name));
+  const downloads = install.length + p.deps.filter((d) => d.state === 'install').length;
+  const line = (ic, cls, key, list) => list.length ? `
+    <div class="ml-change ${cls}">${icon(ic)}<div><b>${h(t(key, { n: list.length }))}</b><span>${h(list.join(', '))}</span></div></div>` : '';
+  const changes = [
+    line('circle-plus', 'ok', 'ml.pvActivate', activate),
+    line('download', 'accent', 'ml.pvInstall', install),
+    line('link', 'accent', 'ml.pvDeps', deps),
+    line('circle-minus', 'warn', 'ml.pvDeactivate', p.deactivate),
+    line('triangle-alert', 'err', 'ml.pvMissing', missing)
+  ].join('');
+  return confirmDialog({
+    title: t('ml.previewTitle', { name: p.name }),
+    text: changes ? '' : t('ml.pvNoChange'),
+    html: changes ? `<div class="ml-changes">${changes}</div>` : '',
+    ok: downloads ? t('ml.installAndLoad', { n: downloads }) : t('ml.load'),
+    iconName: 'list-checks'
+  });
+}
+
+// Ungespeicherte Ladereihenfolge vorher speichern (save = true) oder verwerfen.
+async function settleLoadOrder(save) {
+  if (!state.lo.dirty) return true;
+  const ok = await confirmDialog({
+    title: t('dlg.unsavedTitle'),
+    text: t(save ? 'ml.unsavedSaveText' : 'ml.unsavedLoadText'),
+    ok: t(save ? 'ml.saveFirst' : 'ml.discardAndLoad'),
+    danger: !save,
+    iconName: save ? 'save' : 'triangle-alert'
+  });
+  if (!ok) return false;
+  if (save) return !!(await saveActive(state.lo.active, false));
+  state.lo.dirty = false;
+  return true;
+}
+
+// ====================================================================
 // Ansicht: Collections
 // ====================================================================
 function viewCollections() {
@@ -1024,6 +1155,7 @@ function viewCollections() {
           <div class="grow"><h3>${h(c.title)}</h3><span class="card-sub">${h(t('co.summary', { n: c.items.length, installed }))}</span></div>
           <button class="btn" data-action="collSelect" data-all="1">${icon('square-check')}${t('co.all')}</button>
           <button class="btn" data-action="collSelect" data-all="0">${icon('square')}${t('co.none')}</button>
+          <button class="btn" data-action="collSaveList" title="${h(t('co.saveListHint'))}">${icon('list-checks')}${t('co.saveList')}</button>
           <button class="btn btn-primary" data-action="collInstall" ${selected.length ? '' : 'disabled'}>${icon('download')}${h(t('co.installN', { n: selected.length }))}</button>
         </div>
         ${c.items.map((i) => {
@@ -1465,7 +1597,81 @@ const actions = {
   checkUpdates: () => checkUpdates(),
 
   // Collections
+  mlSave: async () => {
+    if (!(await settleLoadOrder(true))) return;
+    const name = await promptDialog({ title: t('ml.saveTitle'), text: t('ml.saveText', { n: state.lib?.active.length || 0 }), placeholder: t('ml.namePlaceholder'), ok: t('common.save'), iconName: 'save' });
+    if (!name) return;
+    const exists = state.lists?.lists.some((l) => l.name.toLowerCase() === name.toLowerCase());
+    if (exists && !(await confirmDialog({ title: t('ml.overwriteTitle', { name }), text: t('ml.overwriteText'), ok: t('ml.overwrite'), iconName: 'refresh-cw' }))) return;
+    const res = await safe(() => window.api.saveModList(name, exists));
+    if (!res) return;
+    toast(t(exists ? 'toast.listUpdated' : 'toast.listSaved', { name: res.name }), 'success');
+    loadLists();
+  },
+  mlOverwrite: async (d) => {
+    if (!(await settleLoadOrder(true))) return;
+    if (!(await confirmDialog({ title: t('ml.overwriteTitle', { name: d.name }), text: t('ml.overwriteText'), ok: t('ml.overwrite'), iconName: 'refresh-cw' }))) return;
+    if (!(await safe(() => window.api.saveModList(d.name, true)))) return;
+    toast(t('toast.listUpdated', { name: d.name }), 'success');
+    loadLists();
+  },
+  mlLoad: async (d) => {
+    if (!(await settleLoadOrder(false))) return;
+    const preview = await safe(() => window.api.previewModList(d.name));
+    if (!preview || !(await listPreviewDialog(preview))) return;
+    const res = await safe(() => window.api.applyModList(d.name));
+    if (!res) return;
+    if (res.installing) {
+      toast(t('toast.listInstalling', { n: res.installing, name: d.name }), 'info', 7000);
+      return;
+    }
+    toast(t(res.missing ? 'toast.listLoadedMissing' : 'toast.listLoaded', { name: d.name, n: res.missing }), res.missing ? 'warning' : 'success');
+    await loadLibrary();
+    loadLists();
+  },
+  mlCopy: async (d) => {
+    const code = await safe(() => window.api.modListCode(d.name));
+    if (code === undefined || (await safe(() => window.api.copyText(code))) === undefined) return;
+    toast(t('toast.listCopied'), 'success', 7000);
+  },
+  mlRename: async (d) => {
+    const name = await promptDialog({ title: t('ml.renameTitle'), value: d.name, ok: t('ml.rename') });
+    if (!name || name === d.name) return;
+    const res = await safe(() => window.api.renameModList(d.name, name));
+    if (!res) return;
+    toast(t('toast.listRenamed', { name: res.name }), 'success');
+    loadLists();
+  },
+  mlDelete: async (d) => {
+    if (!(await confirmDialog({ title: t('ml.deleteTitle', { name: d.name }), text: t('ml.deleteText'), ok: t('ml.delete'), danger: true, iconName: 'trash-2' }))) return;
+    if ((await safe(() => window.api.deleteModList(d.name))) === undefined) return;
+    toast(t('toast.listDeleted', { name: d.name }), 'success');
+    loadLists();
+  },
+  mlImport: async () => {
+    const input = await promptDialog({
+      title: t('ml.importTitle'), text: t('ml.importText'), placeholder: 'RWML1;…', ok: t('ml.import'), iconName: 'import', multiline: true,
+      extra: { label: t('ml.chooseFile'), icon: 'file-up' }
+    });
+    if (!input) return;
+    const res = await safe(() => window.api.importModList(input.extra ? null : input));
+    if (!res) return;
+    toast(t('toast.listImported', { name: res.name }), 'success', 7000);
+    loadLists();
+  },
   collLoad: () => loadCollection(),
+  collSaveList: async () => {
+    const c = state.collection;
+    const lists = state.lists || (await safe(() => window.api.modLists()));
+    const name = await promptDialog({ title: t('co.saveListTitle'), text: t('co.saveListText', { n: c.items.length }), value: c.title.replace(/[<>:"/\\|?*]/g, '').slice(0, 80), ok: t('common.save'), iconName: 'list-checks' });
+    if (!name) return;
+    const exists = lists?.lists.some((l) => l.name.toLowerCase() === name.toLowerCase());
+    if (exists && !(await confirmDialog({ title: t('ml.overwriteTitle', { name }), text: t('co.overwriteText'), ok: t('ml.overwrite'), iconName: 'refresh-cw' }))) return;
+    const res = await safe(() => window.api.collectionToModList(name, c.items.map((i) => ({ id: i.id, title: i.title })), exists));
+    if (!res) return;
+    state.lists = null;
+    toast(t('toast.collListSaved', { name: res.name }), 'success', 7000);
+  },
   collToggle: (d, el) => {
     if (el.checked) state.collSelected.add(d.id);
     else state.collSelected.delete(d.id);
@@ -1609,8 +1815,10 @@ window.api.on('status', (msg) => {
   if (state.view === 'downloads') rerenderKeepScroll();
 });
 window.api.on('toast', (msg) => toast(msg.text, msg.type));
+window.api.on('modlists:changed', () => state.view === 'modlists' && loadLists());
 window.api.on('library:changed', async () => {
   await loadLibrary();
+  if (state.view === 'modlists') loadLists();
   if (state.updates) state.updates = state.updates.filter((u) => !state.queue.some((x) => x.id === u.id && x.state === 'done'));
   updateBadges();
   if (state.view !== 'downloads') rerenderKeepScroll();

@@ -57,7 +57,7 @@ impl Task {
         }
     }
 
-    fn busy(&self) -> bool {
+    pub fn busy(&self) -> bool {
         matches!(self.state.as_str(), "queued" | "downloading" | "installing")
     }
 }
@@ -275,7 +275,7 @@ impl Installer {
         }
         self.running.store(false, Ordering::SeqCst);
         core.send("status", json!(""));
-        if !installed.is_empty() {
+        if !installed.is_empty() || core.has_pending_list() {
             let core2 = core.clone();
             tauri::async_runtime::spawn(async move { core2.on_batch_done(installed).await });
         }

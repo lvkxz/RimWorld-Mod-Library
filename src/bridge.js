@@ -70,12 +70,23 @@
     clearSteamcmdCache: () => call('steamcmd_clear_cache'),
     launchGame: () => call('game_launch'),
 
+    modLists: () => call('modlists_get'),
+    saveModList: (name, overwrite = false) => call('modlist_save', { name, overwrite }),
+    renameModList: (name, newName) => call('modlist_rename', { name, newName }),
+    deleteModList: (name) => call('modlist_delete', { name }),
+    modListCode: (name) => call('modlist_code', { name }),
+    importModList: (code) => call('modlist_import', { code: code ?? null }),
+    previewModList: (name) => call('modlist_preview', { name }),
+    applyModList: (name) => call('modlist_apply', { name }),
+    collectionToModList: (name, items, overwrite = false) => call('modlist_from_collection', { name, items, overwrite }),
+
     on: (channel, fn) => {
       const map = {
         'queue:update': tasks,
         status: tx,
         toast: (msg) => ({ ...msg, text: tx(msg.text) }),
-        'library:changed': () => undefined
+        'library:changed': () => undefined,
+        'modlists:changed': () => undefined
       };
       if (!map[channel]) return;
       window.__TAURI__.event.listen(channel, (e) => fn(map[channel](e.payload)));
