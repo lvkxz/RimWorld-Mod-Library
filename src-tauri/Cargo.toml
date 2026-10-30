@@ -1,6 +1,6 @@
 [package]
 name = "rimworld-mod-library"
-version = "2.1.0"
+version = "2.2.0"
 description = "Mod library for RimWorld (Epic/GOG) with Steam Workshop integration via SteamCMD"
 authors = ["lvkxz"]
 license = "UNLICENSED"
